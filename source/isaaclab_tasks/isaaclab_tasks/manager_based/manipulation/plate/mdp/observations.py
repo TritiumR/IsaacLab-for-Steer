@@ -25,35 +25,7 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-_POINT_CLOUD_PIXELS_CACHE: dict[tuple[int, int, int, str], tuple[torch.Tensor, torch.Tensor]] = {}
-
-
-def _get_sampled_camera_pixels(
-    height: int, width: int, num_points: int, device: torch.device
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return evenly sampled flattened pixel indices and homogeneous pixel coordinates."""
-    if num_points <= 0:
-        raise ValueError(f"num_points must be positive, got {num_points}.")
-
-    cache_key = (height, width, num_points, str(device))
-    cached = _POINT_CLOUD_PIXELS_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-
-    total_pixels = height * width
-    if num_points >= total_pixels:
-        flat_indices = torch.arange(total_pixels, device=device, dtype=torch.long)
-    else:
-        flat_indices = torch.floor(
-            torch.arange(num_points, device=device, dtype=torch.float32) * total_pixels / num_points
-        ).to(dtype=torch.long)
-
-    u_coords = torch.div(flat_indices, height, rounding_mode="floor").to(dtype=torch.float32)
-    v_coords = torch.remainder(flat_indices, height).to(dtype=torch.float32)
-    homogeneous_pixels = torch.stack((u_coords, v_coords, torch.ones_like(u_coords)), dim=0)
-
-    _POINT_CLOUD_PIXELS_CACHE[cache_key] = (flat_indices, homogeneous_pixels)
-    return flat_indices, homogeneous_pixels
+_POINT_CLOUD_MAX_DEPTH_M = 1.5
 
 
 def _sample_rgbd_camera_point_cloud(
@@ -70,27 +42,38 @@ def _sample_rgbd_camera_point_cloud(
     if normalize_color:
         rgb = rgb / 255.0
 
-    num_envs, height, width = depth.shape
-    flat_indices, homogeneous_pixels = _get_sampled_camera_pixels(height, width, num_points, depth.device)
-
+    num_envs = depth.shape[0]
     flat_depth = depth.transpose(1, 2).reshape(num_envs, -1)
     flat_rgb = rgb.permute(0, 2, 1, 3).reshape(num_envs, -1, 3)
+    points_camera = math_utils.unproject_depth(depth, camera.data.intrinsic_matrices, is_ortho=True)
+    point_distances = torch.linalg.norm(points_camera, dim=-1)
+    valid_mask = torch.isfinite(flat_depth) & (flat_depth > 0.0)
+    valid_mask = valid_mask & (point_distances <= _POINT_CLOUD_MAX_DEPTH_M)
 
-    sampled_depth = flat_depth.index_select(1, flat_indices)
-    sampled_rgb = flat_rgb.index_select(1, flat_indices)
-    valid_mask = torch.isfinite(sampled_depth) & (sampled_depth > 0.0)
-    safe_depth = torch.where(valid_mask, sampled_depth, torch.zeros_like(sampled_depth))
+    selected_indices = torch.zeros((num_envs, num_points), device=depth.device, dtype=torch.long)
+    has_valid_points = torch.zeros(num_envs, device=depth.device, dtype=torch.bool)
+    sampled_valid_mask = torch.zeros((num_envs, num_points), device=depth.device, dtype=torch.bool)
+    for env_index in range(num_envs):
+        valid_indices = torch.nonzero(valid_mask[env_index], as_tuple=False).squeeze(-1)
+        num_valid = valid_indices.numel()
+        if num_valid == 0:
+            continue
+        has_valid_points[env_index] = True
+        if num_valid >= num_points:
+            sampled_offsets = torch.randperm(num_valid, device=depth.device)[:num_points]
+            selected_indices[env_index] = valid_indices.index_select(0, sampled_offsets)
+            sampled_valid_mask[env_index] = True
+        else:
+            sampled_offsets = torch.randperm(num_valid, device=depth.device)
+            selected_indices[env_index, :num_valid] = valid_indices.index_select(0, sampled_offsets)
+            sampled_valid_mask[env_index, :num_valid] = True
 
-    pixel_rays = torch.matmul(
-        torch.linalg.inv(camera.data.intrinsic_matrices),
-        homogeneous_pixels.unsqueeze(0).expand(num_envs, -1, -1),
-    )
-    pixel_rays = pixel_rays / pixel_rays[:, 2:3, :]
-    points_camera = pixel_rays.transpose(1, 2) * safe_depth.unsqueeze(-1)
-    points_world = math_utils.transform_points(points_camera, camera.data.pos_w, camera.data.quat_w_ros)
+    sampled_rgb = flat_rgb.gather(1, selected_indices.unsqueeze(-1).expand(-1, -1, 3))
+    sampled_points_camera = points_camera.gather(1, selected_indices.unsqueeze(-1).expand(-1, -1, 3))
+    points_world = math_utils.transform_points(sampled_points_camera, camera.data.pos_w, camera.data.quat_w_ros)
 
-    points_world = torch.where(valid_mask.unsqueeze(-1), points_world, torch.zeros_like(points_world))
-    sampled_rgb = torch.where(valid_mask.unsqueeze(-1), sampled_rgb, torch.zeros_like(sampled_rgb))
+    points_world = torch.where(sampled_valid_mask.unsqueeze(-1), points_world, torch.zeros_like(points_world))
+    sampled_rgb = torch.where(sampled_valid_mask.unsqueeze(-1), sampled_rgb, torch.zeros_like(sampled_rgb))
     return points_world, sampled_rgb
 
 
@@ -113,6 +96,7 @@ def _get_merged_rgbd_point_cloud(
     for index in range(num_points % len(sensor_names)):
         points_per_camera[index] += 1
 
+    robot: Articulation = env.scene["robot"]
     point_positions = []
     point_colors = []
     for sensor_name, sensor_num_points in zip(sensor_names, points_per_camera, strict=True):
@@ -122,7 +106,10 @@ def _get_merged_rgbd_point_cloud(
             num_points=sensor_num_points,
             normalize_color=normalize_color,
         )
-        point_positions.append(positions_w - env.scene.env_origins[:, None, :])
+        positions_b, _ = math_utils.subtract_frame_transforms(
+            robot.data.root_pos_w, robot.data.root_quat_w, positions_w, None
+        )
+        point_positions.append(positions_b)
         point_colors.append(colors)
 
     merged_point_cloud = {
@@ -138,17 +125,17 @@ def _get_merged_rgbd_point_cloud(
 def merged_rgbd_point_cloud_positions(
     env: ManagerBasedRLEnv,
     sensor_names: tuple[str, ...] = ("table_cam", "table_cam_mirror"),
-    num_points: int = 2048,
+    num_points: int = 8192,
     normalize_color: bool = False,
 ) -> torch.Tensor:
-    """Merged RGB-D point positions in the environment frame."""
+    """Merged RGB-D point positions in the robot root frame."""
     return _get_merged_rgbd_point_cloud(env, sensor_names, num_points, normalize_color)["point_positions"]
 
 
 def merged_rgbd_point_cloud_color(
     env: ManagerBasedRLEnv,
     sensor_names: tuple[str, ...] = ("table_cam", "table_cam_mirror"),
-    num_points: int = 2048,
+    num_points: int = 8192,
     normalize_color: bool = False,
 ) -> torch.Tensor:
     """Merged RGB-D point colors aligned with :func:`merged_rgbd_point_cloud_positions`."""

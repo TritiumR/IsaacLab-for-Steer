@@ -7,9 +7,9 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.sensors import CameraCfg
 from isaaclab.utils import configclass
 
-from isaaclab_tasks.manager_based.manipulation.plate import mdp
+from isaaclab_tasks.manager_based.manipulation.pot import mdp
 
-from . import plate_joint_pos_visuomotor_env_cfg
+from . import pot_joint_pos_visuomotor_env_cfg
 
 
 def _configure_pointcloud_table_cameras(env_cfg):
@@ -34,11 +34,11 @@ def _configure_pointcloud_table_cameras(env_cfg):
 
 
 @configclass
-class ObservationsCfg(plate_joint_pos_visuomotor_env_cfg.ObservationsCfg):
-    """Observation specifications for the point-cloud plate MDP."""
+class ObservationsCfg(pot_joint_pos_visuomotor_env_cfg.ObservationsCfg):
+    """Observation specifications for the point-cloud pot MDP."""
 
     @configclass
-    class PolicyCfg(plate_joint_pos_visuomotor_env_cfg.ObservationsCfg.PolicyCfg):
+    class PolicyCfg(pot_joint_pos_visuomotor_env_cfg.ObservationsCfg.PolicyCfg):
         point_positions = ObsTerm(
             func=mdp.merged_rgbd_point_cloud_positions,
             params={
@@ -60,10 +60,10 @@ class ObservationsCfg(plate_joint_pos_visuomotor_env_cfg.ObservationsCfg):
 
 
 @configclass
-class DroidPlateJointPosPointCloudEnvCfg(
-    plate_joint_pos_visuomotor_env_cfg.DroidPlateJointPosVisuomotorEnvCfg
+class DroidPotJointPosPointCloudEnvCfg(
+    pot_joint_pos_visuomotor_env_cfg.DroidPotJointPosVisuomotorEnvCfg
 ):
-    """Configuration for the plate task with Droid robot using joint position control and point cloud observations."""
+    """Configuration for the pot task with Droid robot using joint position control and point cloud observations."""
 
     observations: ObservationsCfg = ObservationsCfg()
 

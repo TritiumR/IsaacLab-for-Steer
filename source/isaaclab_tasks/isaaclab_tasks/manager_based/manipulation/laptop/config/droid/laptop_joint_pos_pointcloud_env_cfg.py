@@ -165,7 +165,7 @@ class ObservationsCfg:
             func=mdp.merged_rgbd_point_cloud_positions,
             params={
                 "sensor_names": ("table_cam", "table_cam_mirror"),
-                "num_points": 2048,
+                "num_points": 8192,
                 "normalize_color": False,
             },
         )
@@ -173,7 +173,7 @@ class ObservationsCfg:
             func=mdp.merged_rgbd_point_cloud_color,
             params={
                 "sensor_names": ("table_cam", "table_cam_mirror"),
-                "num_points": 2048,
+                "num_points": 8192,
                 "normalize_color": False,
             },
         )
@@ -362,8 +362,8 @@ class DroidLaptopJointPosPointCloudEnvCfg(LaptopEnvCfg):
         self.scene.table_cam.width = 1280
         self.scene.wrist_cam.height = 720
         self.scene.wrist_cam.width = 1280
-        self.scene.table_cam_mirror.height = 720 // 4
-        self.scene.table_cam_mirror.width = 1280 // 4
+        self.scene.table_cam_mirror.height = 720
+        self.scene.table_cam_mirror.width = 1280
 
         # List of image observations in policy observations
         self.image_obs_list = ["table_cam", "wrist_cam"]

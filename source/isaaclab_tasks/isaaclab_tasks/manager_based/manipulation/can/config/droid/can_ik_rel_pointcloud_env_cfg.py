@@ -3,38 +3,21 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-# import isaaclab.sim as sim_utils
-from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.envs.mdp.actions.actions_cfg import DifferentialInverseKinematicsActionCfg
 from isaaclab.utils import configclass
 
-from . import can_joint_pos_pointcloud_env_cfg
+from . import can_ik_rel_visuomotor_env_cfg, can_joint_pos_pointcloud_env_cfg
 
 
 @configclass
 class DroidCanIkRelPointCloudEnvCfg(
-    can_joint_pos_pointcloud_env_cfg.DroidCanJointPosPointCloudEnvCfg
+    can_ik_rel_visuomotor_env_cfg.DroidCanIkRelVisuomotorEnvCfg
 ):
+    """Configuration for the can task with Droid robot using IK control and point cloud observations."""
+
+    observations: can_joint_pos_pointcloud_env_cfg.ObservationsCfg = (
+        can_joint_pos_pointcloud_env_cfg.ObservationsCfg()
+    )
+
     def __post_init__(self):
-        # post init of parent
         super().__post_init__()
-
-        # Set IK controller for the robot
-        self.actions.arm_action = DifferentialInverseKinematicsActionCfg(
-            asset_name="robot",
-            joint_names=["panda_joint.*"],
-            body_name="base_link",
-            controller=DifferentialIKControllerCfg(
-                command_type="pose", use_relative_mode=True, ik_method="dls"
-            ),
-            scale=0.5,
-            body_offset=DifferentialInverseKinematicsActionCfg.OffsetCfg(
-                pos=[0.0, 0.0, 0.107]
-            ),
-        )
-
-        # change camera resolutions to save memory
-        self.scene.table_cam.height = 720
-        self.scene.table_cam.width = 1280
-        self.scene.table_cam_mirror.height = 720
-        self.scene.table_cam_mirror.width = 1280
+        can_joint_pos_pointcloud_env_cfg._configure_pointcloud_table_cameras(self)
