@@ -15,8 +15,9 @@ from typing import TYPE_CHECKING
 
 from isaacsim.core.utils.extensions import enable_extension
 from isaacsim.core.utils.stage import get_current_stage
-from pxr import UsdPhysics
+from pxr import Gf, UsdGeom, UsdPhysics
 
+import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import Articulation, AssetBase
 from isaaclab.managers import SceneEntityCfg
@@ -213,19 +214,19 @@ def randomize_scene_lighting_domelight(
     if not hasattr(env.cfg, "eval_mode") or not env.cfg.eval_mode:
         return
 
-    if env.cfg.eval_type in ["light_intensity", "all"]:
+    if env.cfg.light_eval_type in ["light_intensity", "all"]:
         # Sample new light intensity
         new_intensity = random.uniform(intensity_range[0], intensity_range[1])
         # Set light intensity to light prim
         intensity_attr.Set(new_intensity)
 
-    if env.cfg.eval_type in ["light_color", "all"]:
+    if env.cfg.light_eval_type in ["light_color", "all"]:
         # Sample new light color
         new_color = sample_random_color(base=default_color, variation=color_variation)
         # Set light color to light prim
         color_attr.Set(new_color)
 
-    if env.cfg.eval_type in ["light_texture", "all"]:
+    if env.cfg.light_eval_type in ["light_texture", "all"]:
         # Sample new light texture (background)
         new_texture = random.sample(textures, 1)[0]
         # Set light texture to light prim
@@ -591,3 +592,94 @@ def randomize_camera_offset(
         env_ids=env_ids.tolist(),
         convention="world",
     )
+
+
+def randomize_scene_camera(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    position_range: dict[str, tuple[float, float]],
+    rotation_range: dict[str, tuple[float, float]] | None = None,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("table_cam"),
+):
+    """Randomize a camera pose relative to its configured default local offset.
+
+    The perturbation is applied in the camera's parent frame, starting from
+    ``camera.cfg.offset``. This makes the reset deterministic around the authored
+    default pose instead of accumulating offsets from the current world pose.
+
+    Args:
+        env: The environment object.
+        env_ids: The indices of the environments to randomize.
+        position_range: Dictionary with keys ``x``, ``y``, ``z`` specifying
+            translation perturbation ranges in meters.
+        rotation_range: Optional dictionary with keys ``roll``, ``pitch``, ``yaw``
+            specifying angular perturbation ranges in radians.
+        asset_cfg: The camera scene entity configuration. Defaults to ``"table_cam"``.
+    """
+    if env_ids is None:
+        return
+    if not hasattr(env.cfg, "eval_mode") or not env.cfg.eval_mode:
+        return
+
+    camera = env.scene[asset_cfg.name]
+    camera_prims = sim_utils.find_matching_prims(camera.cfg.prim_path, stage=env.scene.stage)
+
+    if len(camera_prims) == 0:
+        raise RuntimeError(f"Could not find camera prims for path: {camera.cfg.prim_path}")
+
+    default_pos = torch.tensor(camera.cfg.offset.pos, dtype=torch.float32, device=env.device).repeat(len(env_ids), 1)
+    default_quat = torch.tensor(camera.cfg.offset.rot, dtype=torch.float32, device=env.device).repeat(len(env_ids), 1)
+    default_quat = math_utils.convert_camera_frame_orientation_convention(
+        default_quat, origin=camera.cfg.offset.convention, target="opengl"
+    )
+
+    new_pos = default_pos.clone()
+    camera_eval_type = getattr(env.cfg, "camera_eval_type", None)
+    if camera_eval_type in ["camera_position", "all"]:
+        for axis_idx, axis_name in enumerate(["x", "y", "z"]):
+            if axis_name not in position_range:
+                continue
+            min_val, max_val = position_range[axis_name]
+            new_pos[:, axis_idx] += torch.rand(len(env_ids), device=env.device) * (max_val - min_val) + min_val
+
+    new_quat = default_quat.clone()
+    if rotation_range is not None and camera_eval_type in ["camera_rotation", "all"]:
+        roll_offset = torch.zeros(len(env_ids), device=env.device)
+        pitch_offset = torch.zeros(len(env_ids), device=env.device)
+        yaw_offset = torch.zeros(len(env_ids), device=env.device)
+
+        if "roll" in rotation_range:
+            min_val, max_val = rotation_range["roll"]
+            roll_offset = torch.rand(len(env_ids), device=env.device) * (max_val - min_val) + min_val
+        if "pitch" in rotation_range:
+            min_val, max_val = rotation_range["pitch"]
+            pitch_offset = torch.rand(len(env_ids), device=env.device) * (max_val - min_val) + min_val
+        if "yaw" in rotation_range:
+            min_val, max_val = rotation_range["yaw"]
+            yaw_offset = torch.rand(len(env_ids), device=env.device) * (max_val - min_val) + min_val
+
+        offset_quat = math_utils.quat_from_euler_xyz(roll_offset, pitch_offset, yaw_offset)
+        new_quat = math_utils.quat_mul(default_quat, offset_quat)
+
+    for local_idx, env_id in enumerate(env_ids.tolist()):
+        prim = camera_prims[env_id]
+        xformable = UsdGeom.Xformable(prim)
+        translate_op = None
+        orient_op = None
+
+        for op in xformable.GetOrderedXformOps():
+            if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+                translate_op = op
+            elif op.GetOpType() == UsdGeom.XformOp.TypeOrient:
+                orient_op = op
+
+        if translate_op is None:
+            translate_op = xformable.AddTranslateOp(UsdGeom.XformOp.PrecisionDouble)
+        if orient_op is None:
+            orient_op = xformable.AddOrientOp(UsdGeom.XformOp.PrecisionDouble)
+
+        pos = new_pos[local_idx].detach().cpu().tolist()
+        quat = new_quat[local_idx].detach().cpu().tolist()
+
+        translate_op.Set(Gf.Vec3d(pos[0], pos[1], pos[2]))
+        orient_op.Set(Gf.Quatd(quat[0], Gf.Vec3d(quat[1], quat[2], quat[3])))

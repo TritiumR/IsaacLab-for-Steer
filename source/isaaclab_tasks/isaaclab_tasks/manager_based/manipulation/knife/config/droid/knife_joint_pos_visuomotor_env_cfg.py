@@ -3,9 +3,10 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+import os
+import json
 import numpy as np
 import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -13,36 +14,32 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import CameraCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
-from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, NVIDIA_NUCLEUS_DIR
+from isaaclab.utils.noise import GaussianNoiseCfg
+from isaaclab.assets import AssetBaseCfg
+from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
 
-from isaaclab_tasks.manager_based.manipulation.drink import mdp
-from isaaclab_tasks.manager_based.manipulation.drink.mdp import drink_events
-from isaaclab_tasks.manager_based.manipulation.drink.drink_env_cfg import (
-    DRINK_GRASP_DIFF_THRESHOLD,
-    DRINK_GRASP_DIFF_Z,
-    DRINK_BODY_TOP_Z_OFFSET,
-    DRINK_LID_GRASP_DIFF_THRESHOLD,
-    DRINK_LID_REMOVE_HEIGHT_MARGIN,
-    DRINK_LID_REMOVE_XY_THRESHOLD,
-    DRINK_POUR_HEIGHT_THRESHOLD,
-    DRINK_POUR_TILT_THRESHOLD,
-    DRINK_POUR_XY_THRESHOLD,
-    BIG_TABLE_CENTER_POS,
-    DrinkEnvCfg,
-    DRINK_SET_INIT_POS,
-    EventCfg as BaseEventCfg,
+from isaaclab_tasks.manager_based.manipulation.knife import mdp
+from isaaclab_tasks.manager_based.manipulation.knife.mdp import knife_events
+from isaaclab_tasks.manager_based.manipulation.knife.knife_env_cfg import EventCfg as BaseEventCfg
+from isaaclab_tasks.manager_based.manipulation.knife.knife_env_cfg import KnifeEnvCfg
+from isaaclab_tasks.manager_based.manipulation.knife.knife_env_cfg import (
+    APPLE_GRASP_DIFF_THRESHOLD,
+    KNIFE_XY_THRESHOLD,
+    PEAR_GRASP_DIFF_THRESHOLD,
 )
 
 from isaaclab_assets.robots.droid import DROID_CFG  # isort: skip
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
-ROBOT_INIT_POS = (3.1, 3.6, 0.5)
-ROBOT_INIT_ROT = (1.0, 0.0, 0.0, 0.0)
+SHIFT_X = -2.5
+
+ROBOT_INIT_POS = (3.0 + SHIFT_X, 1.86, 0.12)
+ROBOT_INIT_ROT = (0.7071, 0.0, 0.0, -0.7071)
 
 ROBOT_TABLE_INIT_POS = (ROBOT_INIT_POS[0], ROBOT_INIT_POS[1], ROBOT_INIT_POS[2])
-ROBOT_TABLE_INIT_YAW_DEG = 90.0
+ROBOT_TABLE_INIT_YAW_DEG = 0.0
 ROBOT_TABLE_INIT_ROT = (
     float(np.cos(np.deg2rad(ROBOT_TABLE_INIT_YAW_DEG) / 2.0)),
     0.0,
@@ -50,60 +47,88 @@ ROBOT_TABLE_INIT_ROT = (
     float(np.sin(np.deg2rad(ROBOT_TABLE_INIT_YAW_DEG) / 2.0)),
 )
 
-TABLE_OBJECT_RANDOMIZE_POSE_RANGE = {
-    "x": (BIG_TABLE_CENTER_POS[0] - 0.25, BIG_TABLE_CENTER_POS[0] + 0.1),
-    "y": (BIG_TABLE_CENTER_POS[1] - 0.5, BIG_TABLE_CENTER_POS[1] - 0.10),
-    "z": (DRINK_SET_INIT_POS[2], DRINK_SET_INIT_POS[2]),
+KNIFE_DEFAULT_POS = (3.0 + SHIFT_X, 1.3, 0.23)
+KNIFE_RANDOMIZE_POSE_RANGE = {
+    "x": (KNIFE_DEFAULT_POS[0] - 0.0, KNIFE_DEFAULT_POS[0] + 0.25),
+    "y": (KNIFE_DEFAULT_POS[1] - 0.1, KNIFE_DEFAULT_POS[1] + 0.2),
+    "z": (KNIFE_DEFAULT_POS[2], KNIFE_DEFAULT_POS[2]),
     "roll": (0.0, 0.0),
     "pitch": (0.0, 0.0),
-    "yaw": (-0.5, 0.5),
+    "yaw": (np.pi, np.pi),
 }
 
+BOARD_DEFAULT_POS = (2.6 + SHIFT_X, 1.3, 0.23)
+BOARD_RANDOMIZE_POSE_RANGE = {
+    "x": (BOARD_DEFAULT_POS[0] - 0.05, BOARD_DEFAULT_POS[0] + 0.2),
+    "y": (BOARD_DEFAULT_POS[1] - 0.0, BOARD_DEFAULT_POS[1] + 0.2),
+    "z": (BOARD_DEFAULT_POS[2], BOARD_DEFAULT_POS[2]),
+    "roll": (0.0, 0.0),
+    "pitch": (0.0, 0.0),
+    "yaw": (0.0, 0.0),
+}
+
+APPLE_REL_POS_TO_BOARD = (-0.08238987332084574, -0.04169753589476233, 0.0724487)
+APPLE_REL_QUAT_TO_BOARD = (0.9999937957700049, 0.0002367066033963648, -0.00039975546005791907, 0.003491788517939705)
+
+PEAR_REL_POS_TO_BOARD = (0.0083409162111532, 0.003640049095619693, 0.0987787)
+PEAR_REL_QUAT_TO_BOARD = (-0.0446399287174948, 0.9936850534673, -0.063057673728588, 0.08136965689816525)
+
+MANGO_REL_POS_TO_BOARD = (-0.09154030000000002, 0.07006140000000001, 0.1383396)
+MANGO_REL_QUAT_TO_BOARD = (0.09672192178722909, 0.9514776447224945, -0.26097066916851586, -0.13126108057172448)
+
+CABBAGE_REL_POS_TO_BOARD = (0.10755740000000001, -0.0947881, 0.0635123)
+CABBAGE_REL_QUAT_TO_BOARD = (-0.3624254678505684, 0.60247217023873, -0.23433703706677222, 0.6713875314599591)
 
 @configclass
 class EventCfg(BaseEventCfg):
     """Configuration for events."""
 
-    refine_drink_collision = EventTerm(
-        func=drink_events.set_asset_mesh_collision_to_convex_decomposition,
+    apply_apple_scale = EventTerm(
+        func=knife_events.apply_scale_from_spawn_cfg,
+        mode="prestartup",
+        params={"asset_cfg": SceneEntityCfg("apple")},
+    )
+
+    apply_pear_scale = EventTerm(
+        func=knife_events.apply_scale_from_spawn_cfg,
+        mode="prestartup",
+        params={"asset_cfg": SceneEntityCfg("pear")},
+    )
+
+    apply_mango_scale = EventTerm(
+        func=knife_events.apply_scale_from_spawn_cfg,
+        mode="prestartup",
+        params={"asset_cfg": SceneEntityCfg("mango")},
+    )
+
+    apply_cabbage_scale = EventTerm(
+        func=knife_events.apply_scale_from_spawn_cfg,
+        mode="prestartup",
+        params={"asset_cfg": SceneEntityCfg("cabbage")},
+    )
+
+    apply_board_scale = EventTerm(
+        func=knife_events.apply_scale_from_spawn_cfg,
+        mode="prestartup",
+        params={"asset_cfg": SceneEntityCfg("board")},
+    )
+
+    remove_unused_board_components = EventTerm(
+        func=knife_events.deactivate_prim,
         mode="prestartup",
         params={
-            "asset_cfg": SceneEntityCfg("drink"),
-            "hull_vertex_limit": 128,
-            "max_convex_hulls": 32,
-            "min_thickness": 0.001,
-            "voxel_resolution": 2_000_000,
-            "error_percentage": 1.0,
-            "shrink_wrap": True,
+            "prim_path_regex": "/World/envs/env_.*/chopping_board_set/E_Component154_04",
         },
     )
 
-    apply_drink_mass = EventTerm(
-        func=drink_events.apply_mass_props,
-        mode="prestartup",
-        params={"asset_cfg": SceneEntityCfg("drink"), "mass": 0.05},
+    reset_all = EventTerm(
+        func=mdp.reset_scene_to_default,
+        mode="reset",
+        params={"reset_joint_targets": True},
     )
-
-    apply_drink_lid_mass = EventTerm(
-        func=drink_events.apply_mass_props,
-        mode="prestartup",
-        params={"asset_cfg": SceneEntityCfg("drink_lid"), "mass": 0.01},
-    )
-
-    apply_drink_lid_scale = EventTerm(
-        func=drink_events.apply_scale_from_spawn_cfg,
-        mode="prestartup",
-        params={"asset_cfg": SceneEntityCfg("drink_lid")},
-    )
-
-    # reset_all = EventTerm(
-    #     func=mdp.reset_scene_to_default,
-    #     mode="reset",
-    #     params={"reset_joint_targets": True},
-    # )
 
     init_franka_arm_pose = EventTerm(
-        func=drink_events.set_default_joint_pose,
+        func=knife_events.set_default_joint_pose,
         mode="reset",
         params={
             "default_pose": [
@@ -125,7 +150,7 @@ class EventCfg(BaseEventCfg):
     )
 
     randomize_franka_joint_state = EventTerm(
-        func=drink_events.randomize_joint_by_gaussian_offset,
+        func=knife_events.randomize_joint_by_gaussian_offset,
         mode="reset",
         params={
             "mean": 0.0,
@@ -134,27 +159,74 @@ class EventCfg(BaseEventCfg):
         },
     )
 
-    randomize_objects_pose = EventTerm(
-        func=drink_events.randomize_object_pose,
+    # make_plate_dynamic = EventTerm(
+    #     func=oven_events.set_rigid_body_dynamic,
+    #     mode="prestartup",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("plate"),
+    #     },
+    # )
+
+    randomize_board_with_fruits = EventTerm(
+        func=knife_events.randomize_grouped_object_pose,
         mode="reset",
         params={
-            "pose_range": TABLE_OBJECT_RANDOMIZE_POSE_RANGE,
-            "asset_cfgs": [SceneEntityCfg("drink"), SceneEntityCfg("cup")],
-            "min_separation": 0.14,
+            "anchor_pose_range": BOARD_RANDOMIZE_POSE_RANGE,
+            "anchor_asset_cfg": SceneEntityCfg("board"),
+            "attached_asset_cfgs": [
+                SceneEntityCfg("apple"),
+                SceneEntityCfg("pear"),
+                SceneEntityCfg("mango"),
+                SceneEntityCfg("cabbage"),
+            ],
+            "attached_pos_offsets": [
+                APPLE_REL_POS_TO_BOARD,
+                PEAR_REL_POS_TO_BOARD,
+                MANGO_REL_POS_TO_BOARD,
+                CABBAGE_REL_POS_TO_BOARD,
+            ],
+            "attached_quat_offsets": [
+                APPLE_REL_QUAT_TO_BOARD,
+                PEAR_REL_QUAT_TO_BOARD,
+                MANGO_REL_QUAT_TO_BOARD,
+                CABBAGE_REL_QUAT_TO_BOARD,
+            ],
         },
     )
 
-    place_lid_on_drink = EventTerm(
-        func=drink_events.align_attached_object_to_anchor,
+    randomize_knife_positions = EventTerm(
+        func=knife_events.randomize_object_pose,
         mode="reset",
         params={
-            "anchor_asset_cfg": SceneEntityCfg("drink"),
-            "attached_asset_cfg": SceneEntityCfg("drink_lid"),
-            "attached_pos_offset": (0.0, 0.0, DRINK_BODY_TOP_Z_OFFSET),
-            "attached_euler_offset": (0.0, 0.0, 0.0),
+            "pose_range": KNIFE_RANDOMIZE_POSE_RANGE,
+            "asset_cfgs": [SceneEntityCfg("knife")],
         },
     )
 
+    # randomize_light = EventTerm(
+    #     func=knife_events.randomize_scene_lighting_domelight,
+    #     mode="reset",
+    #     params={
+    #         "intensity_range": (1500.0, 10000.0),
+    #         "color_variation": 0.4,
+    #         "textures": [
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Cloudy/abandoned_parking_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Cloudy/evening_road_01_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Cloudy/lakeside_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Indoor/autoshop_01_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Indoor/carpentry_shop_01_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Indoor/hospital_room_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Indoor/hotel_room_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Indoor/old_bus_depot_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Indoor/small_empty_house_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Indoor/surgery_4k.hdr",
+    #             f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Studio/photo_studio_01_4k.hdr",
+    #         ],
+    #         "default_intensity": 1500.0,
+    #         "default_color": (0.75, 0.75, 0.75),
+    #         # "default_texture": f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Studio/photo_studio_01_4k.hdr",
+    #     },
+    # )
 
 @configclass
 class ObservationsCfg:
@@ -181,6 +253,7 @@ class ObservationsCfg:
                 "data_type": "rgb",
                 "normalize": False,
             },
+            # noise=GaussianNoiseCfg(mean=0.0, std=15.0, operation="add"),
         )
         wrist_cam = ObsTerm(
             func=mdp.image,
@@ -189,6 +262,7 @@ class ObservationsCfg:
                 "data_type": "rgb",
                 "normalize": False,
             },
+            # noise=GaussianNoiseCfg(mean=0.0, std=15.0, operation="add"),
         )
 
         def __post_init__(self):
@@ -199,75 +273,63 @@ class ObservationsCfg:
     class SubtaskCfg(ObsGroup):
         """Observations for subtask group."""
 
-        grasp_drink_lid = ObsTerm(
+        grasp_pear = ObsTerm(
             func=mdp.object_grasped,
             params={
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("drink_lid"),
-                "diff_threshold": DRINK_LID_GRASP_DIFF_THRESHOLD,
+                "object_cfg": SceneEntityCfg("pear"),
+                "diff_threshold": PEAR_GRASP_DIFF_THRESHOLD,
             },
         )
 
-        drink_lid_removed = ObsTerm(
-            func=mdp.drink_lid_removed,
+        pear_on_knife = ObsTerm(
+            func=mdp.pear_on_knife,
             params={
-                "drink_cfg": SceneEntityCfg("drink"),
-                "lid_cfg": SceneEntityCfg("drink_lid"),
-                "body_top_z_offset": DRINK_BODY_TOP_Z_OFFSET,
-                "xy_threshold": DRINK_LID_REMOVE_XY_THRESHOLD,
-                "extra_height_threshold": DRINK_LID_REMOVE_HEIGHT_MARGIN,
+                "pear_cfg": SceneEntityCfg("pear"),
+                "knife_cfg": SceneEntityCfg("knife"),
+                "y_offset": -0.05,
+                "xy_threshold": KNIFE_XY_THRESHOLD,
             },
         )
 
-        grasp_drink = ObsTerm(
+        grasp_apple = ObsTerm(
             func=mdp.object_grasped,
             params={
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("drink"),
-                "diff_threshold": DRINK_GRASP_DIFF_THRESHOLD,
-                "diff_z": DRINK_GRASP_DIFF_Z,
+                "object_cfg": SceneEntityCfg("apple"),
+                "diff_threshold": APPLE_GRASP_DIFF_THRESHOLD,
             },
         )
-
-        # drink_poured_into_cup = ObsTerm(
-        #     func=mdp.task_done_drink,
-        #     params={
-        #         "drink_cfg": SceneEntityCfg("drink"),
-        #         "lid_cfg": SceneEntityCfg("drink_lid"),
-        #         "cup_cfg": SceneEntityCfg("cup"),
-        #         "body_top_z_offset": DRINK_BODY_TOP_Z_OFFSET,
-        #         "lid_remove_xy_threshold": DRINK_LID_REMOVE_XY_THRESHOLD,
-        #         "lid_remove_height_margin": DRINK_LID_REMOVE_HEIGHT_MARGIN,
-        #         "pour_xy_threshold": DRINK_POUR_XY_THRESHOLD,
-        #         "pour_height_threshold": DRINK_POUR_HEIGHT_THRESHOLD,
-        #         "pour_tilt_threshold": DRINK_POUR_TILT_THRESHOLD,
-        #     },
-        # )
 
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False
 
+    # observation groups
     policy: PolicyCfg = PolicyCfg()
     subtask_terms: SubtaskCfg = SubtaskCfg()
 
 
 @configclass
-class DroidDrinkJointPosVisuomotorEnvCfg(DrinkEnvCfg):
-    """Configuration for drink task with Droid robot using joint position control."""
+class DroidKnifeJointPosVisuomotorEnvCfg(KnifeEnvCfg):
+    """Configuration for knife task with Droid robot using joint position control."""
 
     observations: ObservationsCfg = ObservationsCfg()
 
+    # Evaluation settings
     eval_mode = False
     eval_type = None
 
     def __post_init__(self):
+        # post init of parent
         super().__post_init__()
 
+        # Set events
         self.events = EventCfg()
 
+        # Robot Table
         self.scene.robot_table = AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/RobotTable",
             init_state=AssetBaseCfg.InitialStateCfg(pos=ROBOT_TABLE_INIT_POS, rot=ROBOT_TABLE_INIT_ROT),
@@ -282,6 +344,7 @@ class DroidDrinkJointPosVisuomotorEnvCfg(DrinkEnvCfg):
         self.scene.robot.init_state.rot = ROBOT_INIT_ROT
         self.scene.robot.spawn.semantic_tags = [("class", "robot")]
 
+        # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["panda_joint.*"],
@@ -296,10 +359,12 @@ class DroidDrinkJointPosVisuomotorEnvCfg(DrinkEnvCfg):
             close_command_expr={"finger_joint": np.pi / 4},
         )
 
+        # utilities for gripper status check
         self.gripper_joint_names = ["right_outer_knuckle_joint", "finger_joint"]
         self.gripper_open_val = 0.0
         self.gripper_threshold = 0.005
 
+        # Listens to the required transforms
         marker_cfg = FRAME_MARKER_CFG.copy()
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
@@ -319,21 +384,33 @@ class DroidDrinkJointPosVisuomotorEnvCfg(DrinkEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/Gripper/Robotiq_2F_85/right_inner_finger",
                     name="tool_rightfinger",
-                    offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
+                    offset=OffsetCfg(
+                        pos=(0.0, 0.0, 0.046),
+                    ),
                 ),
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/Gripper/Robotiq_2F_85/left_inner_finger",
                     name="tool_leftfinger",
-                    offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
+                    offset=OffsetCfg(
+                        pos=(0.0, 0.0, 0.046),
+                    ),
                 ),
             ],
         )
 
+        # Set table camera as the real-world camera
         self.scene.table_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/panda_link0/table_cam",
             height=720,
             width=1280,
             data_types=["rgb"],
+            # spawn=sim_utils.PinholeCameraCfg(
+            #     focal_length=2.1,
+            #     focus_distance=28.0,
+            #     horizontal_aperture=5.376,
+            #     vertical_aperture=3.024,
+            #     clipping_range=(1e-4, 5),
+            # ),
             spawn=sim_utils.PinholeCameraCfg(
                 focal_length=1.0476,
                 horizontal_aperture=2.5452,
@@ -341,12 +418,14 @@ class DroidDrinkJointPosVisuomotorEnvCfg(DrinkEnvCfg):
                 clipping_range=(1e-4, 5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos=(0.054620336834421451, -0.4388594867462788, 0.454018368138419),
+                pos=(0.004620336834421451, -0.5388594867462788, 0.454018368138419),
+                # rot=(0.2595868830, 0.3175587775, 0.7575422903, 0.5078392969),
                 rot=(-0.5078392969, 0.7575422903, -0.3175587775, 0.2595868830),
                 convention="ros",
             ),
         )
 
+        # Set wrist camera
         self.scene.wrist_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/Gripper/Robotiq_2F_85/base_link/wrist_cam",
             height=720,
@@ -365,9 +444,11 @@ class DroidDrinkJointPosVisuomotorEnvCfg(DrinkEnvCfg):
             ),
         )
 
+        # Set settings for camera rendering
         self.rerender_on_reset = True
-        self.sim.render.antialiasing_mode = "OFF"
+        self.sim.render.antialiasing_mode = "OFF"  # disable dlss
 
+        # # change camera resolutions to save memory
         self.scene.table_cam.height = 720
         self.scene.table_cam.width = 1280
         self.scene.wrist_cam.height = 720
@@ -378,4 +459,5 @@ class DroidDrinkJointPosVisuomotorEnvCfg(DrinkEnvCfg):
         # self.scene.wrist_cam.height = 720
         # self.scene.wrist_cam.width = 1280
 
+        # List of image observations in policy observations
         self.image_obs_list = ["table_cam", "wrist_cam"]

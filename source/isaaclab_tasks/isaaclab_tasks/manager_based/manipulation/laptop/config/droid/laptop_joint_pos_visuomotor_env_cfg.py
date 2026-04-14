@@ -102,8 +102,8 @@ class EventCfg(BaseEventCfg):
         func=laptop_events.randomize_scene_lighting_domelight,
         mode="reset",
         params={
-            "intensity_range": (1500.0, 10000.0),
-            "color_variation": 0.4,
+            "intensity_range": (1200.0, 2000.0),
+            "color_variation": 0.5,
             "textures": [
                 f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Cloudy/abandoned_parking_4k.hdr",
                 f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Cloudy/evening_road_01_4k.hdr",
@@ -120,6 +120,24 @@ class EventCfg(BaseEventCfg):
             "default_intensity": 1500.0,
             "default_color": (0.75, 0.75, 0.75),
             # "default_texture": f"{NVIDIA_NUCLEUS_DIR}/Assets/Skies/Studio/photo_studio_01_4k.hdr",
+        },
+    )
+
+    randomize_table_cam = EventTerm(
+        func=laptop_events.randomize_scene_camera,
+        mode="reset",
+        params={
+            "position_range": {
+                "x": (-0.1, 0.1),
+                "y": (-0.1, 0.1),
+                "z": (-0.1, 0.1),
+            },
+            "rotation_range": {
+                "roll": (-0.2, 0.2),
+                "pitch": (-0.2, 0.2),
+                "yaw": (-0.2, 0.2),
+            },
+            "asset_cfg": SceneEntityCfg("table_cam"),
         },
     )
 
@@ -213,7 +231,8 @@ class DroidLaptopJointPosVisuomotorEnvCfg(LaptopEnvCfg):
 
     # Evaluation settings
     eval_mode = False
-    eval_type = None
+    light_eval_type = None
+    camera_eval_type = None
 
     def __post_init__(self):
         # post init of parent

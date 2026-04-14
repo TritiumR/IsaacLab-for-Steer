@@ -48,10 +48,10 @@ DRINK_GRASP_DIFF_Z = 0.10
 DRINK_LID_GRASP_DIFF_THRESHOLD = 0.03
 DRINK_LID_REMOVE_XY_THRESHOLD = 0.05
 DRINK_LID_REMOVE_HEIGHT_MARGIN = 0.04
-DRINK_POUR_XY_THRESHOLD = 0.15
-DRINK_POUR_HEIGHT_THRESHOLD = 0.1
+DRINK_POUR_XY_THRESHOLD = 0.1
+DRINK_POUR_HEIGHT_THRESHOLD = 0.2
 DRINK_POUR_TILT_THRESHOLD = 0.7853981633974483
-ROTATION_FROM_Z_AXIS_THRESHOLD = 1.0471975511965976
+ROTATION_FROM_Z_AXIS_THRESHOLD = 1.4
 
 kinematic_body_properties = RigidBodyPropertiesCfg(
     kinematic_enabled=True,
@@ -258,13 +258,13 @@ class TerminationsCfg:
         },
     )
 
-    drink_lid_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum,
-        params={
-            "minimum_height": 0.2,
-            "asset_cfg": SceneEntityCfg("drink_lid"),
-        },
-    )
+    # drink_lid_dropping = DoneTerm(
+    #     func=mdp.root_height_below_minimum,
+    #     params={
+    #         "minimum_height": 0.2,
+    #         "asset_cfg": SceneEntityCfg("drink_lid"),
+    #     },
+    # )
 
     cup_dropping = DoneTerm(
         func=mdp.root_height_below_minimum,

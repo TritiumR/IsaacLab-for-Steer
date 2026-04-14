@@ -142,6 +142,9 @@ from .droid_weight_ik_rel_mimic_env import DroidWeightIKRelMimicEnv
 from .droid_weight_ik_rel_pointcloud_mimic_env_cfg import (
     DroidWeightIKRelPointCloudMimicEnvCfg,
 )
+from .droid_weight_ik_rel_pointcloud_masked_mimic_env_cfg import (
+    DroidWeightIKRelPointCloudMaskedMimicEnvCfg,
+)
 from .droid_weight_ik_rel_visuomotor_mimic_env_cfg import (
     DroidWeightIKRelVisuomotorMimicEnvCfg,
 )
@@ -638,6 +641,15 @@ gym.register(
     entry_point="isaaclab_mimic.envs:DroidWeightIKRelMimicEnv",
     kwargs={
         "env_cfg_entry_point": DroidWeightIKRelPointCloudMimicEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Weight-Droid-IK-Rel-PointCloud-Masked-Mimic-v0",
+    entry_point="isaaclab_mimic.envs:DroidWeightIKRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": DroidWeightIKRelPointCloudMaskedMimicEnvCfg,
     },
     disable_env_checker=True,
 )

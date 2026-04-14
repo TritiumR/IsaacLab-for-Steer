@@ -291,13 +291,13 @@ class TerminationsCfg:
         },
     )
 
-    cover_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum,
-        params={
-            "minimum_height": 0.5,
-            "asset_cfg": SceneEntityCfg("cover"),
-        },
-    )
+    # cover_dropping = DoneTerm(
+    #     func=mdp.root_height_below_minimum,
+    #     params={
+    #         "minimum_height": 0.5,
+    #         "asset_cfg": SceneEntityCfg("cover"),
+    #     },
+    # )
 
     egg_dropping = DoneTerm(
         func=mdp.root_height_below_minimum,
