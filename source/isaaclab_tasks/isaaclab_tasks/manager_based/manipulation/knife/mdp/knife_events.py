@@ -556,6 +556,96 @@ def randomize_grouped_object_pose(
         )
 
 
+def randomize_grouped_object_pose_with_random_xy_offsets(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    anchor_pose_range: dict[str, tuple[float, float]],
+    anchor_asset_cfg: SceneEntityCfg,
+    attached_asset_cfgs: list[SceneEntityCfg],
+    attached_pos_offsets: list[tuple[float, float, float]],
+    attached_xy_offset_ranges: list[dict[str, tuple[float, float]]],
+    attached_quat_offsets: list[tuple[float, float, float, float]],
+):
+    """Randomize an anchor object and place attached objects with per-env random XY offsets."""
+    if env_ids is None:
+        return
+
+    if isinstance(env_ids, slice):
+        env_ids = torch.arange(env.scene.num_envs, device=env.device, dtype=torch.long)[env_ids]
+    else:
+        env_ids = env_ids.to(device=env.device, dtype=torch.long)
+
+    if env_ids.numel() == 0:
+        return
+
+    if (
+        len(attached_asset_cfgs) != len(attached_pos_offsets)
+        or len(attached_asset_cfgs) != len(attached_xy_offset_ranges)
+        or len(attached_asset_cfgs) != len(attached_quat_offsets)
+    ):
+        raise ValueError(
+            "Attached asset configs, position offsets, XY offset ranges, and quaternion offsets must have the same "
+            "length."
+        )
+
+    anchor_asset = env.scene[anchor_asset_cfg.name]
+
+    pose_list = sample_object_poses(
+        num_objects=len(env_ids),
+        pose_range=anchor_pose_range,
+    )
+    pose_tensor = torch.tensor(pose_list, device=env.device, dtype=torch.float32)
+
+    anchor_positions = pose_tensor[:, 0:3] + env.scene.env_origins[env_ids, 0:3]
+    anchor_orientations = math_utils.quat_from_euler_xyz(
+        pose_tensor[:, 3], pose_tensor[:, 4], pose_tensor[:, 5]
+    )
+
+    anchor_asset.write_root_pose_to_sim(
+        torch.cat([anchor_positions, anchor_orientations], dim=-1),
+        env_ids=env_ids,
+    )
+    anchor_asset.write_root_velocity_to_sim(
+        torch.zeros(len(env_ids), 6, device=env.device, dtype=anchor_positions.dtype),
+        env_ids=env_ids,
+    )
+
+    for asset_cfg, pos_offset, xy_offset_range, quat_offset in zip(
+        attached_asset_cfgs,
+        attached_pos_offsets,
+        attached_xy_offset_ranges,
+        attached_quat_offsets,
+        strict=True,
+    ):
+        asset = env.scene[asset_cfg.name]
+        pos_offset_t = torch.tensor(
+            pos_offset, device=env.device, dtype=anchor_positions.dtype
+        ).unsqueeze(0).repeat(len(env_ids), 1)
+        quat_offset_t = torch.tensor(
+            quat_offset, device=env.device, dtype=anchor_orientations.dtype
+        ).unsqueeze(0).repeat(len(env_ids), 1)
+
+        x_offset_range = xy_offset_range.get("x", (0.0, 0.0))
+        y_offset_range = xy_offset_range.get("y", (0.0, 0.0))
+        pos_offset_t[:, 0] += torch.empty(len(env_ids), device=env.device).uniform_(*x_offset_range)
+        pos_offset_t[:, 1] += torch.empty(len(env_ids), device=env.device).uniform_(*y_offset_range)
+
+        positions, orientations = math_utils.combine_frame_transforms(
+            anchor_positions,
+            anchor_orientations,
+            pos_offset_t,
+            quat_offset_t,
+        )
+        asset.write_root_pose_to_sim(
+            torch.cat([positions, orientations], dim=-1),
+            env_ids=env_ids,
+        )
+        asset.write_root_velocity_to_sim(
+            torch.zeros(len(env_ids), 6, device=env.device, dtype=anchor_positions.dtype),
+            env_ids=env_ids,
+        )
+
+
 def deactivate_prim(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor | None,

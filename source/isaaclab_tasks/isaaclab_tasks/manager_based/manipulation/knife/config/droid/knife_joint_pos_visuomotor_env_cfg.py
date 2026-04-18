@@ -25,9 +25,9 @@ from isaaclab_tasks.manager_based.manipulation.knife.mdp import knife_events
 from isaaclab_tasks.manager_based.manipulation.knife.knife_env_cfg import EventCfg as BaseEventCfg
 from isaaclab_tasks.manager_based.manipulation.knife.knife_env_cfg import KnifeEnvCfg
 from isaaclab_tasks.manager_based.manipulation.knife.knife_env_cfg import (
-    APPLE_GRASP_DIFF_THRESHOLD,
-    KNIFE_XY_THRESHOLD,
-    PEAR_GRASP_DIFF_THRESHOLD,
+    KNIFE_GRASP_DIFF_THRESHOLD,
+    KNIFE_ON_RACK_LOCAL_POS,
+    RACK_INIT_POS,
 )
 
 from isaaclab_assets.robots.droid import DROID_CFG  # isort: skip
@@ -47,15 +47,20 @@ ROBOT_TABLE_INIT_ROT = (
     float(np.sin(np.deg2rad(ROBOT_TABLE_INIT_YAW_DEG) / 2.0)),
 )
 
-KNIFE_DEFAULT_POS = (3.0 + SHIFT_X, 1.3, 0.23)
-KNIFE_RANDOMIZE_POSE_RANGE = {
-    "x": (KNIFE_DEFAULT_POS[0] - 0.0, KNIFE_DEFAULT_POS[0] + 0.25),
-    "y": (KNIFE_DEFAULT_POS[1] - 0.1, KNIFE_DEFAULT_POS[1] + 0.2),
-    "z": (KNIFE_DEFAULT_POS[2], KNIFE_DEFAULT_POS[2]),
+RACK_DEFAULT_POS = tuple(RACK_INIT_POS)
+RACK_RANDOMIZE_POSE_RANGE = {
+    "x": (RACK_DEFAULT_POS[0] - 0.0, RACK_DEFAULT_POS[0] + 0.25),
+    "y": (RACK_DEFAULT_POS[1] - 0.1, RACK_DEFAULT_POS[1] + 0.2),
+    "z": (RACK_DEFAULT_POS[2], RACK_DEFAULT_POS[2]),
     "roll": (0.0, 0.0),
     "pitch": (0.0, 0.0),
     "yaw": (np.pi, np.pi),
 }
+KNIFE_RACK_XY_OFFSET_RANGE = {
+    "x": (-0.04, 0.04),
+    "y": (-0.03, 0.03),
+}
+KNIFE_REL_QUAT_TO_RACK = (0.70710678, 0.0, 0.0, 0.70710678)
 
 BOARD_DEFAULT_POS = (2.6 + SHIFT_X, 1.3, 0.23)
 BOARD_RANDOMIZE_POSE_RANGE = {
@@ -194,12 +199,16 @@ class EventCfg(BaseEventCfg):
         },
     )
 
-    randomize_knife_positions = EventTerm(
-        func=knife_events.randomize_object_pose,
+    randomize_rack_with_knife = EventTerm(
+        func=knife_events.randomize_grouped_object_pose_with_random_xy_offsets,
         mode="reset",
         params={
-            "pose_range": KNIFE_RANDOMIZE_POSE_RANGE,
-            "asset_cfgs": [SceneEntityCfg("knife")],
+            "anchor_pose_range": RACK_RANDOMIZE_POSE_RANGE,
+            "anchor_asset_cfg": SceneEntityCfg("rack"),
+            "attached_asset_cfgs": [SceneEntityCfg("knife")],
+            "attached_pos_offsets": [KNIFE_ON_RACK_LOCAL_POS],
+            "attached_xy_offset_ranges": [KNIFE_RACK_XY_OFFSET_RANGE],
+            "attached_quat_offsets": [KNIFE_REL_QUAT_TO_RACK],
         },
     )
 
@@ -273,33 +282,13 @@ class ObservationsCfg:
     class SubtaskCfg(ObsGroup):
         """Observations for subtask group."""
 
-        grasp_pear = ObsTerm(
+        grasp_knife = ObsTerm(
             func=mdp.object_grasped,
             params={
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("pear"),
-                "diff_threshold": PEAR_GRASP_DIFF_THRESHOLD,
-            },
-        )
-
-        pear_on_knife = ObsTerm(
-            func=mdp.pear_on_knife,
-            params={
-                "pear_cfg": SceneEntityCfg("pear"),
-                "knife_cfg": SceneEntityCfg("knife"),
-                "y_offset": -0.05,
-                "xy_threshold": KNIFE_XY_THRESHOLD,
-            },
-        )
-
-        grasp_apple = ObsTerm(
-            func=mdp.object_grasped,
-            params={
-                "robot_cfg": SceneEntityCfg("robot"),
-                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("apple"),
-                "diff_threshold": APPLE_GRASP_DIFF_THRESHOLD,
+                "object_cfg": SceneEntityCfg("knife"),
+                "diff_threshold": KNIFE_GRASP_DIFF_THRESHOLD,
             },
         )
 

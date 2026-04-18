@@ -10,7 +10,8 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 
-from isaaclab.assets import Articulation, RigidObject
+import isaaclab.utils.math as math_utils
+from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 
 if TYPE_CHECKING:
@@ -27,32 +28,6 @@ def root_height_below_minimum(
     return asset.data.root_pos_w[:, 2] < minimum_height
 
 
-def _gripper_is_open(
-    env: ManagerBasedRLEnv,
-    robot: Articulation,
-    atol: float = 0.01,
-    rtol: float = 0.01,
-) -> torch.Tensor:
-    """Check if both gripper joints are close to the configured open value."""
-    gripper_joint_ids, _ = robot.find_joints(env.cfg.gripper_joint_names)
-    assert len(gripper_joint_ids) == 2, "Terminations only support parallel gripper for now"
-    gripper_open_val = torch.tensor(env.cfg.gripper_open_val, dtype=torch.float32, device=env.device)
-
-    gripper_1_open = torch.isclose(
-        robot.data.joint_pos[:, gripper_joint_ids[0]],
-        gripper_open_val,
-        atol=atol,
-        rtol=rtol,
-    )
-    gripper_2_open = torch.isclose(
-        robot.data.joint_pos[:, gripper_joint_ids[1]],
-        gripper_open_val,
-        atol=atol,
-        rtol=rtol,
-    )
-    return torch.logical_and(gripper_1_open, gripper_2_open)
-
-
 def _asset_root_position_w(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
@@ -62,91 +37,60 @@ def _asset_root_position_w(
     return asset.data.root_pos_w
 
 
-def _object_close_to_knife_xy(
-    env: ManagerBasedRLEnv,
-    object_cfg: SceneEntityCfg,
-    knife_cfg: SceneEntityCfg,
-    xy_threshold: float,
-    y_offset: float = 0.0,
-) -> torch.Tensor:
-    """Check if an object root is close enough to the knife in XY."""
-    object_pos_w = _asset_root_position_w(env, object_cfg)
-    # print(f"object_pos_w: {object_pos_w}")
-    knife_pos_w = _asset_root_position_w(env, knife_cfg)
-    # print(f"knife_pos_w: {knife_pos_w}")
-    xy_dist = torch.linalg.vector_norm(
-        object_pos_w[:, :2]
-        - (knife_pos_w[:, :2] + torch.tensor([0.0, y_offset], device=env.device, dtype=torch.float32)),
-        dim=1,
-    )
-    # print(f"xy_dist: {xy_dist}")
-    # print(f"xy_threshold: {xy_threshold}")
-    return xy_dist <= xy_threshold
-
-
-def apple_on_knife(
+def knife_blade_touching_apple(
     env: ManagerBasedRLEnv,
     apple_cfg: SceneEntityCfg = SceneEntityCfg("apple"),
     knife_cfg: SceneEntityCfg = SceneEntityCfg("knife"),
-    y_offset: float = 0.0,
-    xy_threshold: float = 0.12,
+    blade_local_points: tuple[tuple[float, float, float], ...] = (
+        (0.08, -0.01, 0.0),
+        (0.16, -0.01, 0.0),
+        (0.24, -0.01, 0.0),
+    ),
+    touch_threshold: float = 0.07,
 ) -> torch.Tensor:
-    """Check if the apple is close enough to the knife in XY."""
-    return _object_close_to_knife_xy(
-        env,
-        object_cfg=apple_cfg,
-        knife_cfg=knife_cfg,
-        y_offset=y_offset,
-        xy_threshold=xy_threshold,
-    )
+    """Check if any sampled knife blade point is close enough to the apple root."""
+    apple_pos_w = _asset_root_position_w(env, apple_cfg)
+    knife: RigidObject = env.scene[knife_cfg.name]
 
-
-def pear_on_knife(
-    env: ManagerBasedRLEnv,
-    pear_cfg: SceneEntityCfg = SceneEntityCfg("pear"),
-    knife_cfg: SceneEntityCfg = SceneEntityCfg("knife"),
-    y_offset: float = 0.0,
-    xy_threshold: float = 0.12,
-) -> torch.Tensor:
-    """Check if the pear is close enough to the knife in XY."""
-    return _object_close_to_knife_xy(
-        env,
-        object_cfg=pear_cfg,
-        knife_cfg=knife_cfg,
-        y_offset=y_offset,
-        xy_threshold=xy_threshold,
+    blade_points_b = torch.tensor(
+        blade_local_points,
+        device=env.device,
+        dtype=knife.data.root_pos_w.dtype,
     )
+    blade_points_b = blade_points_b.unsqueeze(0).repeat(env.num_envs, 1, 1)
+    knife_quat_w = knife.data.root_quat_w.unsqueeze(1).repeat(1, blade_points_b.shape[1], 1)
+    blade_points_w = knife.data.root_pos_w.unsqueeze(1) + math_utils.quat_apply(
+        knife_quat_w.reshape(-1, 4),
+        blade_points_b.reshape(-1, 3),
+    ).reshape(env.num_envs, -1, 3)
+
+    blade_to_apple_dist = torch.linalg.vector_norm(
+        blade_points_w - apple_pos_w.unsqueeze(1),
+        dim=2,
+    )
+    min_blade_to_apple_dist = torch.min(blade_to_apple_dist, dim=1).values
+    return min_blade_to_apple_dist <= touch_threshold
 
 
 def task_done_knife(
     env: ManagerBasedRLEnv,
     apple_cfg: SceneEntityCfg = SceneEntityCfg("apple"),
-    pear_cfg: SceneEntityCfg = SceneEntityCfg("pear"),
     knife_cfg: SceneEntityCfg = SceneEntityCfg("knife"),
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    xy_threshold: float = 0.12,
-    y_offset: float = 0.0,
-    atol: float = 0.01,
-    rtol: float = 0.01,
+    blade_local_points: tuple[tuple[float, float, float], ...] = (
+        (0.08, -0.01, 0.0),
+        (0.16, -0.01, 0.0),
+        (0.24, -0.01, 0.0),
+    ),
+    touch_threshold: float = 0.07,
 ) -> torch.Tensor:
-    """Success when both fruits are on the knife and the gripper is open."""
-    apple_placed = apple_on_knife(
+    """Success when the knife blade touches the apple."""
+    return knife_blade_touching_apple(
         env,
         apple_cfg=apple_cfg,
         knife_cfg=knife_cfg,
-        xy_threshold=xy_threshold,
-        y_offset=y_offset,
+        blade_local_points=blade_local_points,
+        touch_threshold=touch_threshold,
     )
-    pear_placed = pear_on_knife(
-        env,
-        pear_cfg=pear_cfg,
-        knife_cfg=knife_cfg,
-        xy_threshold=xy_threshold,
-        y_offset=y_offset,
-    )
-    robot: Articulation = env.scene[robot_cfg.name]
-    gripper_open = _gripper_is_open(env, robot, atol=atol, rtol=rtol)
-    return torch.logical_and(torch.logical_and(apple_placed, pear_placed), gripper_open)
 
 
 def placeholder_task_term(

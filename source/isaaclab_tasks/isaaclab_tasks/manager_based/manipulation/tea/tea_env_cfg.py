@@ -32,21 +32,30 @@ SCENE_ASSET_DIR = os.path.join(
 DININGROOM_INIT_POS = (0.0, 0.0, 0.0)
 DININGROOM_INIT_ROT = (1.0, 0.0, 0.0, 0.0)
 TEA_OBJECT_SCALE = (1.4, 1.4, 1.4)
+TEAPOT_OBJECT_SCALE = (1.0, 1.0, 1.0)
+TEAPOT_HANDLE_MESH_PRIM_PATH = (
+    "{ENV_REGEX_NS}/interactive_diningroom/model_TeaTable/E_teapot_5/P_c680523765f8dbb9"
+)
+TEAPOT_HANDLE_LOCAL_BOUNDS_MIN = (-0.02, 0.0, -0.08)
+TEAPOT_HANDLE_LOCAL_BOUNDS_MAX = (0.02, 0.065, -0.025)
+TEAPOT_HANDLE_SCALE = (1.5, 1.0, 1.5)
+TEAPOT_HANDLE_SCALE_CENTER = (0.0, 0.0378, -0.0584)
+TEAPOT_CENTER_OF_MASS = (0.0, 0.005, -0.015)
 
 TEAPOT_GRASP_DIFF_THRESHOLD = 0.10
 TEAPOT_MOUTH_LOCAL_OFFSET_BASE = (0.0, 0.05, 0.062)
 TEAPOT_MOUTH_LOCAL_OFFSET = tuple(
-    base * scale for base, scale in zip(TEAPOT_MOUTH_LOCAL_OFFSET_BASE, TEA_OBJECT_SCALE, strict=True)
+    base * scale for base, scale in zip(TEAPOT_MOUTH_LOCAL_OFFSET_BASE, TEAPOT_OBJECT_SCALE, strict=True)
 )
 TEAPOT_MOUTH_TEACUP_XY_THRESHOLD = 0.10
 TEAPOT_ROLL_THRESHOLD_RAD = math.radians(30.0)
 TEAPOT_MAX_RELATIVE_ROLL_RAD = math.pi / 4.0
 
-TEAPOT_MASS_PROPERTIES = MassPropertiesCfg(mass=0.001)
+TEAPOT_MASS_PROPERTIES = MassPropertiesCfg(mass=0.01)
 TEACUP_MASS_PROPERTIES = MassPropertiesCfg(mass=0.12)
 TEAPOT_PHYSICS_MATERIAL = sim_utils.RigidBodyMaterialCfg(
-    static_friction=2.0,
-    dynamic_friction=2.0,
+    static_friction=0.8,
+    dynamic_friction=0.6,
     restitution=0.0,
     friction_combine_mode="max",
     restitution_combine_mode="min",
@@ -87,7 +96,7 @@ class TeaSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/interactive_diningroom/model_TeaTable/E_teapot_5",
         spawn=UsdFileCfg(
             usd_path="",
-            scale=TEA_OBJECT_SCALE,
+            scale=TEAPOT_OBJECT_SCALE,
             rigid_props=rigid_body_properties,
             mass_props=TEAPOT_MASS_PROPERTIES,
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
@@ -130,6 +139,29 @@ class EventCfg:
         params={"asset_cfg": SceneEntityCfg("teacup")},
     )
 
+    scale_teapot_handle = EventTerm(
+        func=tea_events.scale_mesh_points_in_local_bounds,
+        mode="prestartup",
+        params={
+            "mesh_prim_path_regex": TEAPOT_HANDLE_MESH_PRIM_PATH,
+            "bounds_min": TEAPOT_HANDLE_LOCAL_BOUNDS_MIN,
+            "bounds_max": TEAPOT_HANDLE_LOCAL_BOUNDS_MAX,
+            "scale": TEAPOT_HANDLE_SCALE,
+            "center": TEAPOT_HANDLE_SCALE_CENTER,
+        },
+    )
+
+    teapot_convex_decomposition_collision = EventTerm(
+        func=tea_events.set_asset_mesh_collision_to_convex_decomposition,
+        mode="prestartup",
+        params={
+            "asset_cfg": SceneEntityCfg("teapot"),
+            "max_convex_hulls": 64,
+            "hull_vertex_limit": 64,
+            "voxel_resolution": 1_000_000,
+        },
+    )
+
     teapot_physics_material = EventTerm(
         func=tea_events.bind_rigid_body_material,
         mode="prestartup",
@@ -137,6 +169,15 @@ class EventCfg:
             "asset_cfg": SceneEntityCfg("teapot"),
             "material_cfg": TEAPOT_PHYSICS_MATERIAL,
             "material_name": "teaPotPhysicsMaterial",
+        },
+    )
+
+    teapot_center_of_mass = EventTerm(
+        func=tea_events.set_center_of_mass,
+        mode="prestartup",
+        params={
+            "asset_cfg": SceneEntityCfg("teapot"),
+            "center_of_mass": TEAPOT_CENTER_OF_MASS,
         },
     )
 
@@ -204,15 +245,15 @@ class ObservationsCfg:
             },
         )
 
-        teapot_mouth_near_teacup = ObsTerm(
-            func=mdp.teapot_mouth_near_teacup_xy,
-            params={
-                "teapot_cfg": SceneEntityCfg("teapot"),
-                "teacup_cfg": SceneEntityCfg("teacup"),
-                "mouth_offset": TEAPOT_MOUTH_LOCAL_OFFSET,
-                "xy_threshold": TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
-            },
-        )
+        # teapot_mouth_near_teacup = ObsTerm(
+        #     func=mdp.teapot_mouth_near_teacup_xy,
+        #     params={
+        #         "teapot_cfg": SceneEntityCfg("teapot"),
+        #         "teacup_cfg": SceneEntityCfg("teacup"),
+        #         "mouth_offset": TEAPOT_MOUTH_LOCAL_OFFSET,
+        #         "xy_threshold": TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
+        #     },
+        # )
 
         # teapot_rolled = ObsTerm(
         #     func=mdp.teapot_rolled,

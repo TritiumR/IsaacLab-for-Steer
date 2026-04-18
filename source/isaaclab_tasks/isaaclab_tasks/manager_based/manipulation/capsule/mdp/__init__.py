@@ -8,3 +8,5 @@
 from isaaclab.envs.mdp import *  # noqa: F401, F403
 
 from isaaclab_tasks.manager_based.manipulation.oven.mdp.observations import *  # noqa: F401, F403
+
+from .terminations import *  # noqa: F401, F403

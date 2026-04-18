@@ -145,6 +145,10 @@ class RecorderManager(ManagerBase):
         """
         self._term_names: list[str] = list()
         self._terms: dict[str, RecorderTerm] = dict()
+        self._dataset_file_handler = None
+        self._failed_episode_dataset_file_handler = None
+        self._exported_successful_episode_count = {}
+        self._exported_failed_episode_count = {}
 
         # Do nothing if cfg is None or an empty dict
         if not cfg:
@@ -166,22 +170,17 @@ class RecorderManager(ManagerBase):
 
         env_name = getattr(env.cfg, "env_name", None)
 
-        self._dataset_file_handler = None
         if cfg.dataset_export_mode != DatasetExportMode.EXPORT_NONE:
             self._dataset_file_handler = cfg.dataset_file_handler_class_type()
             self._dataset_file_handler.create(
                 os.path.join(cfg.dataset_export_dir_path, cfg.dataset_filename), env_name=env_name
             )
 
-        self._failed_episode_dataset_file_handler = None
         if cfg.dataset_export_mode == DatasetExportMode.EXPORT_SUCCEEDED_FAILED_IN_SEPARATE_FILES:
             self._failed_episode_dataset_file_handler = cfg.dataset_file_handler_class_type()
             self._failed_episode_dataset_file_handler.create(
                 os.path.join(cfg.dataset_export_dir_path, f"{cfg.dataset_filename}_failed"), env_name=env_name
             )
-
-        self._exported_successful_episode_count = {}
-        self._exported_failed_episode_count = {}
 
     def __str__(self) -> str:
         """Returns: A string representation for recorder manager."""
@@ -206,11 +205,13 @@ class RecorderManager(ManagerBase):
         if len(self.active_terms) == 0:
             return
 
-        if self._dataset_file_handler is not None:
-            self._dataset_file_handler.close()
+        dataset_file_handler = getattr(self, "_dataset_file_handler", None)
+        if dataset_file_handler is not None:
+            dataset_file_handler.close()
 
-        if self._failed_episode_dataset_file_handler is not None:
-            self._failed_episode_dataset_file_handler.close()
+        failed_episode_dataset_file_handler = getattr(self, "_failed_episode_dataset_file_handler", None)
+        if failed_episode_dataset_file_handler is not None:
+            failed_episode_dataset_file_handler.close()
 
     """
     Properties.

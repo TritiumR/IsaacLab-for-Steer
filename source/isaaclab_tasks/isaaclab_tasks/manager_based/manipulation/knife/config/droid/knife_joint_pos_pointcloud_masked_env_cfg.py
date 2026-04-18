@@ -13,7 +13,7 @@ from . import knife_joint_pos_pointcloud_env_cfg
 
 
 _POINTCLOUD_MASK_DATA_TYPE = "instance_id_segmentation_fast"
-_POINTCLOUD_MASK_ROOTS = ("Robotiq_2F_85", "knife", "chopping_board_set")
+_POINTCLOUD_MASK_ROOTS = ("Robotiq_2F_85", "knife", "rack", "chopping_board_set")
 
 
 def _configure_masked_pointcloud_table_cameras(env_cfg):

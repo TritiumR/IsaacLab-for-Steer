@@ -174,3 +174,34 @@ Each framework has `train.py` and `play.py` in `scripts/reinforcement_learning/<
 - `ISAACLAB_PATH`: Root of the repository
 - `ISAAC_PATH`: Isaac Sim installation directory (set by `_isaac_sim/setup_conda_env.sh`)
 - `CARB_APP_PATH`, `EXP_PATH`: Isaac Sim internal paths
+
+
+## Mimic Demo Deneration
+
+### Collect demos
+
+```bash
+./isaaclab.sh -p scripts/tools/record_demos.py --task Env_Name-IK-Rel-v0 --teleop_device oculus --dataset_file Demos_path --num_demos Number_of_demos --enable_cameras
+```
+
+### Annotate demos
+
+```bash
+./isaaclab.sh -p scripts/imitation_learning/isaaclab_mimic/annotate_demos.py \
+--enable_cameras --task Env_Name-Mimic-v0 --auto \
+--input_file Demos_path --output_file Annotated_demo_path --headless
+```
+
+### Generate demos
+
+```bash
+./isaaclab.sh -p scripts/imitation_learning/isaaclab_mimic/generate_dataset.py \        
+    --enable_cameras \
+    --num_envs 1 \
+    --generation_num_trials Number_of_generated_demos \
+    --task Env_Name-Mimic-v0 \
+    --input_file Annotated_demo_path \
+    --output_file Generated_demo_path \
+    --seed SEED \
+    --headless
+```

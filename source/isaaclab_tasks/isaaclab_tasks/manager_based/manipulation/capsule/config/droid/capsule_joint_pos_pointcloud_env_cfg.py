@@ -54,7 +54,25 @@ class ObservationsCfg:
 
     @configclass
     class SubtaskCfg(ObsGroup):
-        """Reserved for future capsule task signals."""
+        """Observations for subtask group."""
+
+        open_coffee_lid = ObsTerm(
+            func=mdp.coffee_lid_opened,
+            params={
+                "capsule_cfg": SceneEntityCfg("capsule"),
+                "robot_cfg": SceneEntityCfg("robot"),
+            },
+        )
+
+        grasp_pod = ObsTerm(
+            func=mdp.object_grasped,
+            params={
+                "robot_cfg": SceneEntityCfg("robot"),
+                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+                "object_cfg": SceneEntityCfg("can"),
+                "diff_threshold": 0.1,
+            },
+        )
 
         def __post_init__(self):
             self.enable_corruption = False

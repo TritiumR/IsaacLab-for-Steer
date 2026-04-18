@@ -112,7 +112,7 @@ def teapot_mouth_near_teacup_xy(
     teacup_pos_w = _asset_root_position_w(env, teacup_cfg)
     pos_diff = teacup_pos_w - teapot_pos_w
     xy_dist = torch.linalg.vector_norm(pos_diff[:, :2], dim=1)
-    print(f"xy_dist: {xy_dist}")
+    # print(f"xy_dist: {xy_dist}")
     return xy_dist <= xy_threshold
 
 
@@ -123,7 +123,7 @@ def teapot_rolled(
 ) -> torch.Tensor:
     """Check if the teapot roll magnitude exceeds the threshold."""
     relative_roll = _teapot_relative_roll(env, teapot_cfg=teapot_cfg)
-    print(f"relative_roll: {relative_roll}")
+    # print(f"relative_roll: {relative_roll}")
     return relative_roll >= min_roll_rad
 
 

@@ -171,23 +171,23 @@ class ObservationsCfg:
             },
         )
 
-        teapot_mouth_near_teacup = ObsTerm(
-            func=mdp.teapot_mouth_near_teacup_xy,
-            params={
-                "teapot_cfg": SceneEntityCfg("teapot"),
-                "teacup_cfg": SceneEntityCfg("teacup"),
-                "mouth_offset": TEAPOT_MOUTH_LOCAL_OFFSET,
-                "xy_threshold": TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
-            },
-        )
+        # teapot_mouth_near_teacup = ObsTerm(
+        #     func=mdp.teapot_mouth_near_teacup_xy,
+        #     params={
+        #         "teapot_cfg": SceneEntityCfg("teapot"),
+        #         "teacup_cfg": SceneEntityCfg("teacup"),
+        #         "mouth_offset": TEAPOT_MOUTH_LOCAL_OFFSET,
+        #         "xy_threshold": TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
+        #     },
+        # )
 
-        teapot_rolled = ObsTerm(
-            func=mdp.teapot_rolled,
-            params={
-                "teapot_cfg": SceneEntityCfg("teapot"),
-                "min_roll_rad": TEAPOT_ROLL_THRESHOLD_RAD,
-            },
-        )
+        # teapot_rolled = ObsTerm(
+        #     func=mdp.teapot_rolled,
+        #     params={
+        #         "teapot_cfg": SceneEntityCfg("teapot"),
+        #         "min_roll_rad": TEAPOT_ROLL_THRESHOLD_RAD,
+        #     },
+        # )
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -277,24 +277,6 @@ class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
                     name="tool_leftfinger",
                     offset=OffsetCfg(
                         pos=(0.0, 0.0, 0.046),
-                    ),
-                ),
-            ],
-        )
-
-        teapot_marker_cfg = FRAME_MARKER_CFG.copy()
-        teapot_marker_cfg.markers["frame"].scale = (0.06, 0.06, 0.06)
-        teapot_marker_cfg.prim_path = "/Visuals/TeaPotMouthDebug"
-        self.scene.teapot_mouth_frame = FrameTransformerCfg(
-            prim_path="{ENV_REGEX_NS}/interactive_diningroom/model_TeaTable/E_teapot_5",
-            debug_vis=True,
-            visualizer_cfg=teapot_marker_cfg,
-            target_frames=[
-                FrameTransformerCfg.FrameCfg(
-                    prim_path="{ENV_REGEX_NS}/interactive_diningroom/model_TeaTable/E_teapot_5",
-                    name="teapot_mouth",
-                    offset=OffsetCfg(
-                        pos=TEAPOT_MOUTH_LOCAL_OFFSET,
                     ),
                 ),
             ],

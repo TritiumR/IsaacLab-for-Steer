@@ -10,9 +10,9 @@ import isaaclab.utils.math as PoseUtils
 from isaaclab.envs import ManagerBasedRLMimicEnv
 
 
-class DroidTeaIKRelMimicEnv(ManagerBasedRLMimicEnv):
+class DroidCapsuleIKRelMimicEnv(ManagerBasedRLMimicEnv):
     """
-    Isaac Lab Mimic environment wrapper class for Droid Tea IK Rel env.
+    Isaac Lab Mimic environment wrapper class for Droid Capsule IK Rel env.
     """
 
     should_terminate = dict[int, bool]()
@@ -153,7 +153,6 @@ class DroidTeaIKRelMimicEnv(ManagerBasedRLMimicEnv):
 
         subtask_terms = self.obs_buf["subtask_terms"]
         return {
-            "grasp_teapot": subtask_terms["grasp_teapot"][env_ids],
-            # "teapot_mouth_near_teacup": subtask_terms["teapot_mouth_near_teacup"][env_ids],
-            # "teapot_rolled": subtask_terms["teapot_rolled"][env_ids],
+            "open_coffee_lid": subtask_terms["open_coffee_lid"][env_ids],
+            "grasp_pod": subtask_terms["grasp_pod"][env_ids],
         }

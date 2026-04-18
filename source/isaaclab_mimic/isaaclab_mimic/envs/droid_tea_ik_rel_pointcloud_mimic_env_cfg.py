@@ -6,23 +6,21 @@
 from isaaclab.envs.mimic_env_cfg import MimicEnvCfg, SubTaskConfig
 from isaaclab.utils import configclass
 
-from isaaclab_tasks.manager_based.manipulation.tea.config.droid.tea_ik_rel_visuomotor_env_cfg import (
-    DroidTeaIkRelVisuomotorEnvCfg,
+from isaaclab_tasks.manager_based.manipulation.tea.config.droid.tea_ik_rel_pointcloud_env_cfg import (
+    DroidTeaIkRelPointCloudEnvCfg,
 )
 
 
 @configclass
-class DroidTeaIKRelVisuomotorMimicEnvCfg(
-    DroidTeaIkRelVisuomotorEnvCfg, MimicEnvCfg
+class DroidTeaIKRelPointCloudMimicEnvCfg(
+    DroidTeaIkRelPointCloudEnvCfg, MimicEnvCfg
 ):
-    """
-    Isaac Lab Mimic environment config class for Droid Tea IK Rel Visuomotor env.
-    """
+    """Isaac Lab Mimic environment config class for Droid Tea IK Rel PointCloud env."""
 
     def __post_init__(self):
         super().__post_init__()
 
-        self.datagen_config.name = "isaac_lab_droid_tea_ik_rel_visuomotor_D0"
+        self.datagen_config.name = "isaac_lab_droid_tea_ik_rel_pointcloud_D0"
         self.datagen_config.generation_guarantee = True
         self.datagen_config.generation_keep_failed = False
         self.datagen_config.generation_num_trials = 10
@@ -76,3 +74,4 @@ class DroidTeaIKRelVisuomotorMimicEnvCfg(
             )
         )
         self.subtask_configs["franka"] = subtask_configs
+

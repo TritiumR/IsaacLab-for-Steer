@@ -38,12 +38,12 @@ ROBOT_TABLE_INIT_ROT = (
 )
 
 CAPSULE_RANDOMIZE_POSE_RANGE = {
-    "x": (CAPSULE_INIT_POS[0] - 0.1, CAPSULE_INIT_POS[0] + 0.1),
-    "y": (CAPSULE_INIT_POS[1] - 0.1, CAPSULE_INIT_POS[1] + 0.1),
+    "x": (CAPSULE_INIT_POS[0] - 0.15, CAPSULE_INIT_POS[0] + 0.15),
+    "y": (CAPSULE_INIT_POS[1] - 0.05, CAPSULE_INIT_POS[1] + 0.05),
     "z": (CAPSULE_INIT_POS[2], CAPSULE_INIT_POS[2]),
     "roll": (0.0, 0.0),
     "pitch": (0.0, 0.0),
-    "yaw": (np.pi, np.pi),
+    "yaw": (np.pi - 0.25, np.pi + 0.25),
 }
 
 CAN_DEFAULT_POS = (2.6, 1.35, 0.22)
@@ -181,7 +181,25 @@ class ObservationsCfg:
 
     @configclass
     class SubtaskCfg(ObsGroup):
-        """Reserved for future capsule task signals."""
+        """Observations for subtask group."""
+
+        open_coffee_lid = ObsTerm(
+            func=mdp.coffee_lid_opened,
+            params={
+                "capsule_cfg": SceneEntityCfg("capsule"),
+                "robot_cfg": SceneEntityCfg("robot"),
+            },
+        )
+
+        grasp_pod = ObsTerm(
+            func=mdp.object_grasped,
+            params={
+                "robot_cfg": SceneEntityCfg("robot"),
+                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+                "object_cfg": SceneEntityCfg("can"),
+                "diff_threshold": 0.1,
+            },
+        )
 
         def __post_init__(self):
             self.enable_corruption = False

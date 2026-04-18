@@ -14,6 +14,7 @@ from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim.schemas.schemas_cfg import MassPropertiesCfg, RigidBodyPropertiesCfg
@@ -35,11 +36,12 @@ CAPSULE_ASSET_PATH = os.path.join(
 ROOM_INIT_POS = [-4.3, -0.8, -0.6]
 ROOM_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
 
-CAPSULE_INIT_POS = [3.0, 1.1, 0.35]
+CAPSULE_INIT_POS = [3.0, 1.2, 0.2]
 CAPSULE_INIT_ROT = [0.0, 0.0, 0.0, 1.0]
 CAPSULE_SHELL_JOINT = "RevoluteJoint_capsule_coffee_maker_3_up"
 CAPSULE_LEFT_BUTTON_JOINT = "PrismaticJoint_capsule_coffee_maker_3_left"
 CAPSULE_RIGHT_BUTTON_JOINT = "PrismaticJoint_capsule_coffee_maker_3_right"
+CAPSULE_SHELL_LINK_Y_SCALE = 1.25
 
 mass_properties = MassPropertiesCfg(
     mass=0.03,
@@ -79,7 +81,7 @@ class CapsuleSceneCfg(InteractiveSceneCfg):
             usd_path="",
             rigid_props=rigid_body_properties,
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
-            scale=(0.7, 0.7, 0.7),
+            scale=(0.55, 0.55, 0.55),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=[3.0, 1.5, 0.25],
@@ -89,7 +91,7 @@ class CapsuleSceneCfg(InteractiveSceneCfg):
 
     capsule = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/capsule",
-        articulation_root_prim_path="/root/E_body_2",
+        articulation_root_prim_path="/E_body_2",
         spawn=sim_utils.UsdFileCfg(
             usd_path=os.path.abspath(CAPSULE_ASSET_PATH),
             rigid_props=rigid_body_properties,
@@ -163,6 +165,15 @@ class EventCfg:
         },
     )
 
+    scale_capsule_shell_link = EventTerm(
+        func=capsule_events.set_prim_local_scale,
+        mode="prestartup",
+        params={
+            "prim_path_regex": "{ENV_REGEX_NS}/capsule/E_shell_8",
+            "scale": (1.0, CAPSULE_SHELL_LINK_Y_SCALE, 1.0),
+        },
+    )
+
 
 @configclass
 class ObservationsCfg:
@@ -194,7 +205,25 @@ class ObservationsCfg:
 
     @configclass
     class SubtaskCfg(ObsGroup):
-        """Reserved for future capsule task signals."""
+        """Observations for subtask group."""
+
+        open_coffee_lid = ObsTerm(
+            func=mdp.coffee_lid_opened,
+            params={
+                "capsule_cfg": SceneEntityCfg("capsule"),
+                "robot_cfg": SceneEntityCfg("robot"),
+            },
+        )
+
+        grasp_pod = ObsTerm(
+            func=mdp.object_grasped,
+            params={
+                "robot_cfg": SceneEntityCfg("robot"),
+                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+                "object_cfg": SceneEntityCfg("can"),
+                "diff_threshold": 0.1,
+            },
+        )
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -209,7 +238,14 @@ class ObservationsCfg:
 class TerminationsCfg:
     """Termination terms for the capsule coffee machine task."""
 
-    pass
+    success = DoneTerm(
+        func=mdp.task_done_capsule,
+        params={
+            "capsule_cfg": SceneEntityCfg("capsule"),
+            "can_cfg": SceneEntityCfg("can"),
+            "robot_cfg": SceneEntityCfg("robot"),
+        },
+    )
 
 
 @configclass

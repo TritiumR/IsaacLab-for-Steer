@@ -37,8 +37,15 @@ ROOM_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
 
 SHIFT_X = -2.5
 
-KNIFE_INIT_POS = [3.0 + SHIFT_X, 1.3, 0.2]
-KNIFE_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
+RACK_INIT_POS = [3.0 + SHIFT_X, 1.3, 0.2]
+RACK_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
+KNIFE_ON_RACK_LOCAL_POS = (0.0, 0.0, 0.21)
+KNIFE_INIT_POS = [
+    RACK_INIT_POS[0] + KNIFE_ON_RACK_LOCAL_POS[0],
+    RACK_INIT_POS[1] + KNIFE_ON_RACK_LOCAL_POS[1],
+    RACK_INIT_POS[2] + KNIFE_ON_RACK_LOCAL_POS[2],
+]
+KNIFE_INIT_ROT = [0.70710678, 0.0, 0.0, 0.70710678]
 
 BOARD_SET_INIT_POS = [2.6 + SHIFT_X, 1.35, 0.22]
 BOARD_SET_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
@@ -58,9 +65,13 @@ MANGO_LOCAL_ROT = (0.9514776447224945, -0.26097066916851586, -0.1312610805717244
 CABBAGE_LOCAL_POS = (-0.07733400000000001, 0.0783481, 0.05351229999999999)
 CABBAGE_LOCAL_ROT = (0.60247217023873, -0.23433703706677222, 0.6713875314599591, -0.3624254678505684)
 
-APPLE_GRASP_DIFF_THRESHOLD = 0.08
-PEAR_GRASP_DIFF_THRESHOLD = 0.08
-KNIFE_XY_THRESHOLD = 0.12
+KNIFE_GRASP_DIFF_THRESHOLD = 0.15
+KNIFE_APPLE_TOUCH_THRESHOLD = 0.07
+KNIFE_BLADE_LOCAL_POINTS = (
+    (0.08, -0.01, 0.0),
+    (0.16, -0.01, 0.0),
+    (0.24, -0.01, 0.0),
+)
 
 kinematic_body_properties = RigidBodyPropertiesCfg(
     kinematic_enabled=True,
@@ -75,6 +86,11 @@ rigid_body_properties = RigidBodyPropertiesCfg(
 knife_rigid_body_properties = RigidBodyPropertiesCfg(
     kinematic_enabled=False,
     disable_gravity=False,
+)
+
+rack_rigid_body_properties = RigidBodyPropertiesCfg(
+    kinematic_enabled=True,
+    disable_gravity=True,
 )
 
 mass_properties = MassPropertiesCfg(
@@ -218,6 +234,20 @@ class KnifeSceneCfg(InteractiveSceneCfg):
         ),
     )
 
+    rack = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/rack",
+        spawn=UsdFileCfg(
+            usd_path=os.path.abspath(os.path.join(CUSTOM_ASSET_DIR, "plate rack003", "model_bracket3.usd")),
+            rigid_props=rack_rigid_body_properties,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+            semantic_tags=[("class", "rack")],
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=list(RACK_INIT_POS),
+            rot=list(RACK_INIT_ROT),
+        ),
+    )
+
     knife = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/knife",
         spawn=UsdFileCfg(
@@ -310,33 +340,14 @@ class ObservationsCfg:
     @configclass
     class SubtaskCfg(ObsGroup):
         """Subtask terms for the knife task."""
-        grasp_pear = ObsTerm(
+
+        grasp_knife = ObsTerm(
             func=mdp.object_grasped,
             params={
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("pear"),
-                "diff_threshold": PEAR_GRASP_DIFF_THRESHOLD,
-            },
-        )
-
-        pear_on_knife = ObsTerm(
-            func=mdp.pear_on_knife,
-            params={
-                "pear_cfg": SceneEntityCfg("pear"),
-                "knife_cfg": SceneEntityCfg("knife"),
-                "y_offset": -0.05,
-                "xy_threshold": KNIFE_XY_THRESHOLD,
-            },
-        )
-
-        grasp_apple = ObsTerm(
-            func=mdp.object_grasped,
-            params={
-                "robot_cfg": SceneEntityCfg("robot"),
-                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("apple"),
-                "diff_threshold": APPLE_GRASP_DIFF_THRESHOLD,
+                "object_cfg": SceneEntityCfg("knife"),
+                "diff_threshold": KNIFE_GRASP_DIFF_THRESHOLD,
             },
         )
 
@@ -358,20 +369,13 @@ class TerminationsCfg:
         params={"minimum_height": 0.0, "asset_cfg": SceneEntityCfg("apple")},
     )
 
-    pear_dropping = DoneTerm(
-        func=mdp.root_height_below_minimum,
-        params={"minimum_height": 0.0, "asset_cfg": SceneEntityCfg("pear")},
-    )
-
     success = DoneTerm(
         func=mdp.task_done_knife,
         params={
             "apple_cfg": SceneEntityCfg("apple"),
-            "pear_cfg": SceneEntityCfg("pear"),
             "knife_cfg": SceneEntityCfg("knife"),
-            "robot_cfg": SceneEntityCfg("robot"),
-            "xy_threshold": KNIFE_XY_THRESHOLD,
-            "y_offset": -0.05,
+            "blade_local_points": KNIFE_BLADE_LOCAL_POINTS,
+            "touch_threshold": KNIFE_APPLE_TOUCH_THRESHOLD,
         },
     )
 

@@ -123,6 +123,121 @@ def apply_scale_from_spawn_cfg(
         )
 
 
+def scale_mesh_points_in_local_bounds(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    mesh_prim_path_regex: str,
+    bounds_min: tuple[float, float, float],
+    bounds_max: tuple[float, float, float],
+    scale: tuple[float, float, float],
+    center: tuple[float, float, float] | None = None,
+    weld_precision: int = 6,
+):
+    """Scale connected mesh components inside a local bounding box without moving the whole asset."""
+    del env_ids
+
+    if "{ENV_REGEX_NS}" in mesh_prim_path_regex:
+        mesh_prim_path_regex = mesh_prim_path_regex.format(ENV_REGEX_NS=env.scene.env_regex_ns)
+
+    if center is None:
+        center = tuple((lo + hi) * 0.5 for lo, hi in zip(bounds_min, bounds_max, strict=True))
+
+    stage = get_current_stage()
+    center_vec = Gf.Vec3f(*center)
+    scale_vec = Gf.Vec3f(*scale)
+
+    for prim_path in sim_utils.find_matching_prim_paths(mesh_prim_path_regex, stage):
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            continue
+
+        mesh = UsdGeom.Mesh(prim)
+        points_attr = mesh.GetPointsAttr()
+        points = points_attr.Get()
+        if points is None:
+            continue
+
+        point_to_welded_index = []
+        key_to_welded_index = {}
+        welded_points = []
+        for point in points:
+            key = tuple(round(float(point[index]), weld_precision) for index in range(3))
+            welded_index = key_to_welded_index.get(key)
+            if welded_index is None:
+                welded_index = len(welded_points)
+                key_to_welded_index[key] = welded_index
+                welded_points.append(point)
+            point_to_welded_index.append(welded_index)
+
+        face_counts = mesh.GetFaceVertexCountsAttr().Get()
+        face_indices = mesh.GetFaceVertexIndicesAttr().Get()
+        selected_welded_indices = set()
+
+        if face_counts is not None and face_indices is not None:
+            adjacency = [set() for _ in welded_points]
+            face_start = 0
+            for face_count in face_counts:
+                face = [point_to_welded_index[index] for index in face_indices[face_start : face_start + face_count]]
+                face_start += face_count
+                for index, welded_index in enumerate(face):
+                    next_welded_index = face[(index + 1) % face_count]
+                    if welded_index == next_welded_index:
+                        continue
+                    adjacency[welded_index].add(next_welded_index)
+                    adjacency[next_welded_index].add(welded_index)
+
+            visited = [False] * len(welded_points)
+            for start_index in range(len(welded_points)):
+                if visited[start_index]:
+                    continue
+
+                component = []
+                stack = [start_index]
+                visited[start_index] = True
+                while stack:
+                    welded_index = stack.pop()
+                    component.append(welded_index)
+                    for next_welded_index in adjacency[welded_index]:
+                        if visited[next_welded_index]:
+                            continue
+                        visited[next_welded_index] = True
+                        stack.append(next_welded_index)
+
+                component_points = [welded_points[index] for index in component]
+                component_bounds_min = tuple(min(point[index] for point in component_points) for index in range(3))
+                component_bounds_max = tuple(max(point[index] for point in component_points) for index in range(3))
+                component_in_bounds = all(
+                    bounds_min[index] <= component_bounds_min[index]
+                    and component_bounds_max[index] <= bounds_max[index]
+                    for index in range(3)
+                )
+                if component_in_bounds:
+                    selected_welded_indices.update(component)
+        else:
+            selected_welded_indices.update(
+                welded_index
+                for welded_index, point in enumerate(welded_points)
+                if all(bounds_min[index] <= point[index] <= bounds_max[index] for index in range(3))
+            )
+
+        scaled_points = []
+        for point in points:
+            welded_index = point_to_welded_index[len(scaled_points)]
+            if welded_index not in selected_welded_indices:
+                scaled_points.append(point)
+                continue
+
+            scaled_points.append(
+                Gf.Vec3f(
+                    center_vec[0] + (point[0] - center_vec[0]) * scale_vec[0],
+                    center_vec[1] + (point[1] - center_vec[1]) * scale_vec[1],
+                    center_vec[2] + (point[2] - center_vec[2]) * scale_vec[2],
+                )
+            )
+
+        points_attr.Set(scaled_points)
+
+
 def apply_mass_props(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor | None,
@@ -160,6 +275,30 @@ def apply_mass_props(
                 mass_api.CreateDensityAttr().Set(float(density))
 
         prim_stack.extend(prim.GetChildren())
+
+
+def set_center_of_mass(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    center_of_mass: tuple[float, float, float],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("teapot"),
+):
+    """Set the local center of mass on matching rigid body prims."""
+    del env_ids
+
+    asset: RigidObject = env.scene[asset_cfg.name]
+    stage = get_current_stage()
+
+    for prim_path in sim_utils.find_matching_prim_paths(asset.cfg.prim_path, stage):
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            continue
+
+        mass_api = UsdPhysics.MassAPI(prim)
+        if not mass_api:
+            mass_api = UsdPhysics.MassAPI.Apply(prim)
+
+        mass_api.CreateCenterOfMassAttr().Set(Gf.Vec3f(*center_of_mass))
 
 
 

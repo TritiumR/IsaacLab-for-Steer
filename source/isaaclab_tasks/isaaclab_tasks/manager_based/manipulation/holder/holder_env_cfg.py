@@ -36,6 +36,7 @@ ROOM_INIT_POS = [-4.3, -0.8, -0.6]
 ROOM_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
 
 CUP_INIT_POS = [1.6, 4.8, 0.22]
+CUP_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
 HOLDER_INIT_POS = [2.0, 5.0, 0.22]
 ASSET_INIT_ROT = [1.0, 0.0, 0.0, 0.0]
 
@@ -79,14 +80,15 @@ class HolderSceneCfg(InteractiveSceneCfg):
         ),
     )
 
-    cup = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/cup",
+    mug = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/mug",
         spawn=UsdFileCfg(
-            usd_path=os.path.abspath(os.path.join(CUSTOM_ASSET_DIR, "cup", "model_papercup.usd")),
+            usd_path=os.path.abspath(os.path.join(CUSTOM_ASSET_DIR, "mug", "mug.usd")),
             rigid_props=cup_body_properties,
             mass_props=cup_mass_properties,
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
-            semantic_tags=[("class", "cup")],
+            scale=(1.5, 1.5, 1.5),
+            semantic_tags=[("class", "mug")],
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=CUP_INIT_POS,
@@ -101,6 +103,7 @@ class HolderSceneCfg(InteractiveSceneCfg):
             rigid_props=rigid_body_properties,
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
             semantic_tags=[("class", "holder")],
+            scale=(1.5, 1.5, 1.2),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
             pos=HOLDER_INIT_POS,
@@ -125,6 +128,41 @@ class ActionsCfg:
 @configclass
 class EventCfg:
     """Configuration for startup events."""
+
+    mug_convex_decomposition_collision = EventTerm(
+        func=holder_events.apply_convex_decomposition_collision,
+        mode="prestartup",
+        params={
+            "prim_path_regex": "{ENV_REGEX_NS}/mug/geometry/mesh",
+            "hull_vertex_limit": 128,
+            "max_convex_hulls": 128,
+            "voxel_resolution": 1_000_000,
+            "error_percentage": 2.5,
+            "shrink_wrap": True,
+        },
+    )
+
+    kitchen_tabletop_dark_ceramic_material = EventTerm(
+        func=holder_events.bind_visual_material,
+        mode="prestartup",
+        params={
+            "prim_path_regex": (
+                "{ENV_REGEX_NS}/interactive_kitchen/model_largecabinet/E_body_146/"
+                "E_tabletop_01_32/P_3a04cb584d982cff"
+            ),
+            "material_cfg": sim_utils.MdlFileCfg(
+                mdl_path=os.path.abspath(
+                    os.path.join(
+                        KITCHEN_ASSET_DIR,
+                        "kitchen",
+                        "Isaac Sim 4.5/isaac-sim-assets/Materials/2023_2_1/Base/Stone/Ceramic_Tile_18.mdl",
+                    )
+                ),
+                albedo_brightness=0.25,
+            ),
+            "material_name": "darkCeramicTabletopMaterial",
+        },
+    )
 
     deactivate_kitchen_plate = EventTerm(
         func=holder_events.deactivate_prim,
@@ -171,12 +209,12 @@ class ObservationsCfg:
     class SubtaskCfg(ObsGroup):
         """Observations for subtask group."""
 
-        cup_grasped = ObsTerm(
+        mug_grasped = ObsTerm(
             func=mdp.object_grasped,
             params={
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("cup"),
+                "object_cfg": SceneEntityCfg("mug"),
                 "diff_threshold": 0.1,
             },
         )
@@ -194,15 +232,26 @@ class ObservationsCfg:
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
-    cup_dropping = DoneTerm(
+    mug_dropping = DoneTerm(
         func=mdp.root_height_below_minimum,
         params={
             "minimum_height": 0.0,
-            "asset_cfg": SceneEntityCfg("cup"),
+            "asset_cfg": SceneEntityCfg("mug"),
         },
     )
 
-    success = DoneTerm(func=mdp.task_done_holder)
+    success = DoneTerm(
+        func=mdp.task_done_holder_released,
+        params={
+            "mug_cfg": SceneEntityCfg("mug"),
+            "holder_cfg": SceneEntityCfg("holder"),
+            "robot_cfg": SceneEntityCfg("robot"),
+            "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+            "min_mug_height": 0.36,
+            "holder_xy_threshold": None,
+            "min_gripper_mug_distance": 0.12,
+        },
+    )
 
 
 @configclass

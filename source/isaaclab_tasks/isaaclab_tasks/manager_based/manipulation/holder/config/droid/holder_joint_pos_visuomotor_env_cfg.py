@@ -25,7 +25,7 @@ from isaaclab_tasks.manager_based.manipulation.holder.mdp import holder_events
 from isaaclab_assets.robots.droid import DROID_CFG  # isort: skip
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
-ROBOT_INIT_POS = (1.7, 4.4, 0.2)
+ROBOT_INIT_POS = (1.7, 4.5, 0.2)
 ROBOT_INIT_ROT = (0.7071, 0.0, 0.0, 0.7071)
 
 ROBOT_TABLE_INIT_POS = (ROBOT_INIT_POS[0], ROBOT_INIT_POS[1], ROBOT_INIT_POS[2])
@@ -43,9 +43,9 @@ CUP_RANDOMIZE_POSE_RANGE = {
     "x": (CUP_DEFAULT_POS[0] - 0.3, CUP_DEFAULT_POS[0] + 0.05),
     "y": (CUP_DEFAULT_POS[1], CUP_DEFAULT_POS[1] + 0.10),
     "z": (CUP_DEFAULT_POS[2], CUP_DEFAULT_POS[2]),
-    "roll": (0.0, 0.0),
+    "roll": (np.pi / 2, np.pi / 2),
     "pitch": (0.0, 0.0),
-    "yaw": (0.0, 0.0),
+    "yaw": (-1.0, 1.0),
 }
 
 HOLDER_RANDOMIZE_POSE_RANGE = {
@@ -99,7 +99,7 @@ class EventCfg(BaseEventCfg):
         mode="reset",
         params={
             "pose_range": CUP_RANDOMIZE_POSE_RANGE,
-            "asset_cfgs": [SceneEntityCfg("cup")],
+            "asset_cfgs": [SceneEntityCfg("mug")],
         },
     )
 
@@ -178,12 +178,12 @@ class ObservationsCfg:
     class SubtaskCfg(ObsGroup):
         """Observations for subtask group."""
 
-        cup_grasped = ObsTerm(
+        mug_grasped = ObsTerm(
             func=mdp.object_grasped,
             params={
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("cup"),
+                "object_cfg": SceneEntityCfg("mug"),
                 "diff_threshold": 0.1,
             },
         )
