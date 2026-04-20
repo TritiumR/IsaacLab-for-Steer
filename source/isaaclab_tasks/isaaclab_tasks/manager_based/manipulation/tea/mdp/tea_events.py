@@ -14,7 +14,7 @@ import torch
 from typing import TYPE_CHECKING
 
 from isaacsim.core.utils.stage import get_current_stage
-from pxr import Gf, UsdGeom, UsdPhysics
+from pxr import Gf, UsdGeom, UsdPhysics, UsdShade
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -121,6 +121,56 @@ def apply_scale_from_spawn_cfg(
                 current_scale[2] * sz,
             )
         )
+
+
+def _env_root_from_prim_path(prim_path: str) -> str | None:
+    """Return the per-env root path for a prim path under /World/envs/env_*."""
+    parts = prim_path.split("/")
+    if len(parts) >= 4 and parts[1] == "World" and parts[2] == "envs":
+        return "/" + "/".join(parts[1:4])
+    return None
+
+
+def bind_existing_visual_material(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    prim_path_regex: str,
+    material_path_regex: str,
+):
+    """Bind an existing visual material to matching prims, pairing materials by env root."""
+    del env_ids
+
+    if "{ENV_REGEX_NS}" in prim_path_regex:
+        prim_path_regex = prim_path_regex.format(ENV_REGEX_NS=env.scene.env_regex_ns)
+    if "{ENV_REGEX_NS}" in material_path_regex:
+        material_path_regex = material_path_regex.format(ENV_REGEX_NS=env.scene.env_regex_ns)
+
+    stage = get_current_stage()
+    material_paths = sim_utils.find_matching_prim_paths(material_path_regex, stage)
+    if not material_paths:
+        return
+
+    material_paths_by_env = {
+        env_root: material_path
+        for material_path in material_paths
+        if (env_root := _env_root_from_prim_path(material_path)) is not None
+    }
+
+    for prim_path in sim_utils.find_matching_prim_paths(prim_path_regex, stage):
+        prim = stage.GetPrimAtPath(prim_path)
+        if not prim.IsValid():
+            continue
+
+        material_path = material_paths[0]
+        env_root = _env_root_from_prim_path(prim_path)
+        if env_root is not None:
+            material_path = material_paths_by_env.get(env_root, material_path)
+
+        material = UsdShade.Material(stage.GetPrimAtPath(material_path))
+        if not material:
+            continue
+
+        UsdShade.MaterialBindingAPI.Apply(prim).Bind(material)
 
 
 def scale_mesh_points_in_local_bounds(

@@ -28,6 +28,30 @@ if TYPE_CHECKING:
 _POINT_CLOUD_PIXELS_CACHE: dict[tuple[int, int, int, str], tuple[torch.Tensor, torch.Tensor]] = {}
 
 
+def _prim_path_matches_root(prim_path: str, prim_root: str) -> bool:
+    """Return whether the USD prim path contains the requested root as a full path segment."""
+    return f"/{prim_root}/" in prim_path or prim_path.endswith(f"/{prim_root}")
+
+
+def _resolve_segmentation_ids_from_prim_paths(
+    camera: Camera,
+    segmentation_data_type: str,
+    include_prim_path_roots: tuple[str, ...],
+) -> list[set[int]]:
+    """Resolve per-env segmentation ids whose prim paths belong to the requested roots."""
+    segmentation_ids_per_env = []
+    for env_info in camera.data.info:
+        id_to_labels = env_info.get(segmentation_data_type, {}).get("idToLabels", {})
+        included_ids: set[int] = set()
+        for segmentation_id, prim_path in id_to_labels.items():
+            if not isinstance(prim_path, str):
+                continue
+            if any(_prim_path_matches_root(prim_path, prim_root) for prim_root in include_prim_path_roots):
+                included_ids.add(int(segmentation_id))
+        segmentation_ids_per_env.append(included_ids)
+    return segmentation_ids_per_env
+
+
 def _get_sampled_camera_pixels(
     height: int, width: int, num_points: int, device: torch.device
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -60,6 +84,8 @@ def _sample_rgbd_camera_point_cloud(
     camera: Camera,
     num_points: int,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample a fixed-size point cloud from an RGB-D camera in the world frame."""
     depth = camera.data.output["distance_to_image_plane"]
@@ -76,14 +102,61 @@ def _sample_rgbd_camera_point_cloud(
     flat_depth = depth.transpose(1, 2).reshape(num_envs, -1)
     flat_rgb = rgb.permute(0, 2, 1, 3).reshape(num_envs, -1, 3)
 
-    sampled_depth = flat_depth.index_select(1, flat_indices)
-    sampled_rgb = flat_rgb.index_select(1, flat_indices)
-    valid_mask = torch.isfinite(sampled_depth) & (sampled_depth > 0.0)
+    if segmentation_data_type is not None and include_prim_path_roots:
+        segmentation = camera.data.output[segmentation_data_type]
+        if segmentation.dim() == 4 and segmentation.shape[-1] == 1:
+            segmentation = segmentation.squeeze(-1)
+        flat_segmentation = segmentation.transpose(1, 2).reshape(num_envs, -1)
+        valid_mask = torch.isfinite(flat_depth) & (flat_depth > 0.0)
+        segmentation_ids_per_env = _resolve_segmentation_ids_from_prim_paths(
+            camera=camera,
+            segmentation_data_type=segmentation_data_type,
+            include_prim_path_roots=include_prim_path_roots,
+        )
+
+        segmentation_mask = torch.zeros_like(valid_mask)
+        for env_index, segmentation_ids in enumerate(segmentation_ids_per_env):
+            if not segmentation_ids:
+                continue
+            env_mask = torch.zeros_like(flat_segmentation[env_index], dtype=torch.bool)
+            for segmentation_id in segmentation_ids:
+                env_mask |= flat_segmentation[env_index] == segmentation_id
+            segmentation_mask[env_index] = env_mask
+
+        valid_mask = valid_mask & segmentation_mask
+        sampled_flat_indices = torch.zeros((num_envs, num_points), device=depth.device, dtype=torch.long)
+        sampled_valid_mask = torch.zeros((num_envs, num_points), device=depth.device, dtype=torch.bool)
+        for env_index in range(num_envs):
+            valid_indices = torch.nonzero(valid_mask[env_index], as_tuple=False).squeeze(-1)
+            num_valid = valid_indices.numel()
+            if num_valid == 0:
+                continue
+            if num_valid >= num_points:
+                sampled_offsets = torch.randperm(num_valid, device=depth.device)[:num_points]
+                sampled_flat_indices[env_index] = valid_indices.index_select(0, sampled_offsets)
+                sampled_valid_mask[env_index] = True
+            else:
+                sampled_offsets = torch.randperm(num_valid, device=depth.device)
+                sampled_flat_indices[env_index, :num_valid] = valid_indices.index_select(0, sampled_offsets)
+                sampled_valid_mask[env_index, :num_valid] = True
+
+        sampled_depth = flat_depth.gather(1, sampled_flat_indices)
+        sampled_rgb = flat_rgb.gather(1, sampled_flat_indices.unsqueeze(-1).expand(-1, -1, 3))
+        u_coords = torch.div(sampled_flat_indices, height, rounding_mode="floor").to(dtype=torch.float32)
+        v_coords = torch.remainder(sampled_flat_indices, height).to(dtype=torch.float32)
+        homogeneous_pixels = torch.stack((u_coords, v_coords, torch.ones_like(u_coords)), dim=1)
+        valid_mask = sampled_valid_mask
+    else:
+        sampled_depth = flat_depth.index_select(1, flat_indices)
+        sampled_rgb = flat_rgb.index_select(1, flat_indices)
+        valid_mask = torch.isfinite(sampled_depth) & (sampled_depth > 0.0)
+        homogeneous_pixels = homogeneous_pixels.unsqueeze(0).expand(num_envs, -1, -1)
+
     safe_depth = torch.where(valid_mask, sampled_depth, torch.zeros_like(sampled_depth))
 
     pixel_rays = torch.matmul(
         torch.linalg.inv(camera.data.intrinsic_matrices),
-        homogeneous_pixels.unsqueeze(0).expand(num_envs, -1, -1),
+        homogeneous_pixels,
     )
     pixel_rays = pixel_rays / pixel_rays[:, 2:3, :]
     points_camera = pixel_rays.transpose(1, 2) * safe_depth.unsqueeze(-1)
@@ -99,11 +172,13 @@ def _get_merged_rgbd_point_cloud(
     sensor_names: tuple[str, ...],
     num_points: int,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> dict[str, torch.Tensor]:
     """Create and cache a merged point cloud from multiple RGB-D cameras for the current env step."""
     cache_name = "_oven_merged_rgbd_point_cloud_cache"
     cache = getattr(env, cache_name, {})
-    cache_key = (sensor_names, num_points, normalize_color)
+    cache_key = (sensor_names, num_points, normalize_color, segmentation_data_type, include_prim_path_roots)
     step_count = env.common_step_counter
 
     if cache_key in cache and cache[cache_key]["step"] == step_count:
@@ -121,6 +196,8 @@ def _get_merged_rgbd_point_cloud(
             camera=camera,
             num_points=sensor_num_points,
             normalize_color=normalize_color,
+            segmentation_data_type=segmentation_data_type,
+            include_prim_path_roots=include_prim_path_roots,
         )
         point_positions.append(positions_w - env.scene.env_origins[:, None, :])
         point_colors.append(colors)
@@ -140,9 +217,13 @@ def merged_rgbd_point_cloud_positions(
     sensor_names: tuple[str, ...] = ("table_cam", "table_cam_mirror"),
     num_points: int = 2048,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> torch.Tensor:
     """Merged RGB-D point positions in the environment frame."""
-    return _get_merged_rgbd_point_cloud(env, sensor_names, num_points, normalize_color)["point_positions"]
+    return _get_merged_rgbd_point_cloud(
+        env, sensor_names, num_points, normalize_color, segmentation_data_type, include_prim_path_roots
+    )["point_positions"]
 
 
 def merged_rgbd_point_cloud_color(
@@ -150,9 +231,13 @@ def merged_rgbd_point_cloud_color(
     sensor_names: tuple[str, ...] = ("table_cam", "table_cam_mirror"),
     num_points: int = 2048,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> torch.Tensor:
     """Merged RGB-D point colors aligned with :func:`merged_rgbd_point_cloud_positions`."""
-    return _get_merged_rgbd_point_cloud(env, sensor_names, num_points, normalize_color)["point_color"]
+    return _get_merged_rgbd_point_cloud(
+        env, sensor_names, num_points, normalize_color, segmentation_data_type, include_prim_path_roots
+    )["point_color"]
 
 
 def object_position_in_world_frame(

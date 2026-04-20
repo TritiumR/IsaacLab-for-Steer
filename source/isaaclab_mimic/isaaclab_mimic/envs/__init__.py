@@ -143,11 +143,27 @@ from .droid_scissor_ik_rel_visuomotor_mimic_env_cfg import (
     DroidScissorIKRelVisuomotorMimicEnvCfg,
 )
 from .droid_tea_ik_rel_mimic_env import DroidTeaIKRelMimicEnv
+from .droid_hot_tea_ik_rel_mimic_env import DroidHotTeaIKRelMimicEnv
+from .droid_hot_tea_ik_rel_thermal_mimic_env_cfg import (
+    DroidHotTeaIKRelThermalMimicEnvCfg,
+)
+from .droid_tea_ik_rel_pointcloud_masked_mimic_env_cfg import (
+    DroidTeaIKRelPointCloudMaskedMimicEnvCfg,
+)
 from .droid_tea_ik_rel_pointcloud_mimic_env_cfg import (
     DroidTeaIKRelPointCloudMimicEnvCfg,
 )
 from .droid_tea_ik_rel_visuomotor_mimic_env_cfg import (
     DroidTeaIKRelVisuomotorMimicEnvCfg,
+)
+from .droid_tea_wood_ik_rel_pointcloud_masked_mimic_env_cfg import (
+    DroidTeaWoodIKRelPointCloudMaskedMimicEnvCfg,
+)
+from .droid_tea_wood_ik_rel_pointcloud_mimic_env_cfg import (
+    DroidTeaWoodIKRelPointCloudMimicEnvCfg,
+)
+from .droid_tea_wood_ik_rel_visuomotor_mimic_env_cfg import (
+    DroidTeaWoodIKRelVisuomotorMimicEnvCfg,
 )
 from .droid_weight_ik_rel_mimic_env import DroidWeightIKRelMimicEnv
 from .droid_weight_ik_rel_pointcloud_mimic_env_cfg import (
@@ -670,6 +686,53 @@ gym.register(
     entry_point="isaaclab_mimic.envs:DroidTeaIKRelMimicEnv",
     kwargs={
         "env_cfg_entry_point": DroidTeaIKRelPointCloudMimicEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Tea-Droid-IK-Rel-PointCloud-Masked-Mimic-v0",
+    entry_point="isaaclab_mimic.envs:DroidTeaIKRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": DroidTeaIKRelPointCloudMaskedMimicEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+
+gym.register(
+    id="Isaac-Hot-Tea-Droid-IK-Rel-Thermal-Mimic-v0",
+    entry_point="isaaclab_mimic.envs:DroidHotTeaIKRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": DroidHotTeaIKRelThermalMimicEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+
+gym.register(
+    id="Isaac-Tea-Wood-Droid-IK-Rel-Visuomotor-Mimic-v0",
+    entry_point="isaaclab_mimic.envs:DroidTeaIKRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": DroidTeaWoodIKRelVisuomotorMimicEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Tea-Wood-Droid-IK-Rel-PointCloud-Mimic-v0",
+    entry_point="isaaclab_mimic.envs:DroidTeaIKRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": DroidTeaWoodIKRelPointCloudMimicEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Tea-Wood-Droid-IK-Rel-PointCloud-Masked-Mimic-v0",
+    entry_point="isaaclab_mimic.envs:DroidTeaIKRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": DroidTeaWoodIKRelPointCloudMaskedMimicEnvCfg,
     },
     disable_env_checker=True,
 )
