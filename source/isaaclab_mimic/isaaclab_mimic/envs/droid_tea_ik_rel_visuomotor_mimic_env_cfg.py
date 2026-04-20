@@ -33,7 +33,7 @@ class DroidTeaIKRelVisuomotorMimicEnvCfg(
         self.datagen_config.max_num_failures = 25
         self.datagen_config.seed = 1
 
-        action_noise = 0.02
+        action_noise = 0.008
 
         subtask_configs = []
         subtask_configs.append(

@@ -188,13 +188,13 @@ extract_isaacsim_path() {
 
 # extract the python from isaacsim
 extract_python_exe() {
-    # check if using conda
-    if ! [[ -z "${CONDA_PREFIX}" ]]; then
+    # prefer an explicitly activated virtual environment over an inherited conda prefix
+    if ! [[ -z "${VIRTUAL_ENV}" ]]; then
+        # use virtual environment python
+        local python_exe=${VIRTUAL_ENV}/bin/python
+    elif ! [[ -z "${CONDA_PREFIX}" ]]; then
         # use conda python
         local python_exe=${CONDA_PREFIX}/bin/python
-    elif ! [[ -z "${VIRTUAL_ENV}" ]]; then
-        # use uv virtual environment python
-        local python_exe=${VIRTUAL_ENV}/bin/python
     else
         # use kit python
         local python_exe=${ISAACLAB_PATH}/_isaac_sim/python.sh
@@ -269,6 +269,27 @@ extract_pip_uninstall_command() {
     fi
 
     echo ${pip_uninstall_command}
+}
+
+# prepend the packages from this checkout so local scripts resolve against the current repository
+prepend_repo_sources_to_pythonpath() {
+    local repo_pythonpath=""
+    local source_dir
+
+    while IFS= read -r source_dir; do
+        repo_pythonpath="${repo_pythonpath}${source_dir}:"
+    done < <(find -L "${ISAACLAB_PATH}/source" -mindepth 1 -maxdepth 1 -type d | sort)
+
+    repo_pythonpath="${repo_pythonpath%:}"
+    if [ -z "${repo_pythonpath}" ]; then
+        return
+    fi
+
+    if [ -n "${PYTHONPATH}" ]; then
+        export PYTHONPATH="${repo_pythonpath}:${PYTHONPATH}"
+    else
+        export PYTHONPATH="${repo_pythonpath}"
+    fi
 }
 
 # check if input directory is a python extension and install the module
@@ -634,6 +655,7 @@ while [[ $# -gt 0 ]]; do
         -p|--python)
             # run the python provided by isaacsim
             python_exe=$(extract_python_exe)
+            prepend_repo_sources_to_pythonpath
             echo "[INFO] Using python from: ${python_exe}"
             shift # past argument
             ${python_exe} "$@"
