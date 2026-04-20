@@ -6,23 +6,21 @@
 from isaaclab.envs.mimic_env_cfg import MimicEnvCfg, SubTaskConfig
 from isaaclab.utils import configclass
 
-from isaaclab_tasks.manager_based.manipulation.tea.config.droid.tea_ik_rel_visuomotor_env_cfg import (
-    DroidTeaIkRelVisuomotorEnvCfg,
+from isaaclab_tasks.manager_based.manipulation.tea.config.droid.tea_ik_rel_pointcloud_masked_env_cfg import (
+    DroidTeaIkRelPointCloudMaskedEnvCfg,
 )
 
 
 @configclass
-class DroidTeaIKRelVisuomotorMimicEnvCfg(
-    DroidTeaIkRelVisuomotorEnvCfg, MimicEnvCfg
+class DroidTeaIKRelPointCloudMaskedMimicEnvCfg(
+    DroidTeaIkRelPointCloudMaskedEnvCfg, MimicEnvCfg
 ):
-    """
-    Isaac Lab Mimic environment config class for Droid Tea IK Rel Visuomotor env.
-    """
+    """Isaac Lab Mimic environment config class for Droid Tea IK Rel masked point cloud env."""
 
     def __post_init__(self):
         super().__post_init__()
 
-        self.datagen_config.name = "isaac_lab_droid_tea_ik_rel_visuomotor_D0"
+        self.datagen_config.name = "isaac_lab_droid_tea_ik_rel_pointcloud_masked_D0"
         self.datagen_config.generation_guarantee = True
         self.datagen_config.generation_keep_failed = False
         self.datagen_config.generation_num_trials = 10
@@ -49,19 +47,6 @@ class DroidTeaIKRelVisuomotorMimicEnvCfg(
                 apply_noise_during_interpolation=False,
             )
         )
-        # subtask_configs.append(
-        #     SubTaskConfig(
-        #         object_ref="teacup",
-        #         subtask_term_signal="teapot_mouth_near_teacup",
-        #         subtask_term_offset_range=(0, 0),
-        #         selection_strategy="nearest_neighbor_object",
-        #         selection_strategy_kwargs={"nn_k": 3},
-        #         action_noise=action_noise,
-        #         num_interpolation_steps=10,
-        #         num_fixed_steps=0,
-        #         apply_noise_during_interpolation=False,
-        #     )
-        # )
         subtask_configs.append(
             SubTaskConfig(
                 object_ref="teacup",

@@ -4,7 +4,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import numpy as np
+
 import isaaclab.sim as sim_utils
+from isaaclab.assets import AssetBaseCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -12,26 +14,28 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import CameraCfg
 from isaaclab.sensors import FrameTransformerCfg
 from isaaclab.sensors.frame_transformer.frame_transformer_cfg import OffsetCfg
-from isaaclab.utils import configclass
-from isaaclab.assets import AssetBaseCfg
 from isaaclab.sim.spawners.from_files.from_files_cfg import UsdFileCfg
+from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
-from isaaclab_tasks.manager_based.manipulation.tea import mdp
-from isaaclab_tasks.manager_based.manipulation.tea.mdp import tea_events
-from isaaclab_tasks.manager_based.manipulation.tea.tea_env_cfg import (
+from isaaclab_tasks.manager_based.manipulation.ice import mdp
+from isaaclab_tasks.manager_based.manipulation.ice.ice_env_cfg import (
+    CUP_INIT_POS,
+    ICE_CUBE_INIT_POS,
+    ICE_CUP_XY_THRESHOLD,
+    ICE_CUP_Z_MAX_THRESHOLD,
+    ICE_CUP_Z_MIN_THRESHOLD,
+    ICE_GRASP_DIFF_THRESHOLD,
     EventCfg as BaseEventCfg,
-    TEAPOT_GRASP_DIFF_THRESHOLD,
-    TEAPOT_MOUTH_LOCAL_OFFSET,
-    TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
-    TEAPOT_ROLL_THRESHOLD_RAD,
-    TeaEnvCfg,
+    IceEnvCfg,
 )
+from isaaclab_tasks.manager_based.manipulation.ice.mdp import ice_events
 
 from isaaclab_assets.robots.droid import DROID_CFG  # isort: skip
 from isaaclab.markers.config import FRAME_MARKER_CFG  # isort: skip
 
-ROBOT_INIT_POS = (2.5, 5.6, 0.7)
+# ROBOT_INIT_POS = (8.1, -0.4, 0.75)
+ROBOT_INIT_POS = (8.8, -4.3, 0.55)
 ROBOT_INIT_YAW_DEG = 0.0
 ROBOT_INIT_ROT = (
     float(np.cos(np.deg2rad(ROBOT_INIT_YAW_DEG) / 2.0)),
@@ -41,17 +45,13 @@ ROBOT_INIT_ROT = (
 )
 
 ROBOT_TABLE_INIT_POS = (ROBOT_INIT_POS[0], ROBOT_INIT_POS[1], ROBOT_INIT_POS[2])
-ROBOT_TABLE_INIT_YAW_DEG = ROBOT_INIT_YAW_DEG + 90.0
+ROBOT_TABLE_INIT_YAW_DEG = 90.0
 ROBOT_TABLE_INIT_ROT = (
     float(np.cos(np.deg2rad(ROBOT_TABLE_INIT_YAW_DEG) / 2.0)),
     0.0,
     0.0,
     float(np.sin(np.deg2rad(ROBOT_TABLE_INIT_YAW_DEG) / 2.0)),
 )
-
-TEA_OBJECT_RESET_CENTER = (3.0, 5.5, 0.86)
-TEA_OBJECT_X_RANGE = 0.17
-TEA_OBJECT_Y_RANGE = 0.4
 
 
 @configclass
@@ -64,31 +64,40 @@ class EventCfg(BaseEventCfg):
         params={"reset_joint_targets": True},
     )
 
-    randomize_tea_objects = EventTerm(
-        func=tea_events.randomize_object_pose,
+    randomize_cup_pose = EventTerm(
+        func=ice_events.randomize_object_pose,
         mode="reset",
         params={
-            "asset_cfgs": [SceneEntityCfg("teapot"), SceneEntityCfg("teacup")],
+            "asset_cfgs": [SceneEntityCfg("cup")],
             "pose_range": {
-                "x": (
-                    TEA_OBJECT_RESET_CENTER[0] - TEA_OBJECT_X_RANGE / 2.0,
-                    TEA_OBJECT_RESET_CENTER[0] + TEA_OBJECT_X_RANGE / 2.0,
-                ),
-                "y": (
-                    TEA_OBJECT_RESET_CENTER[1] - TEA_OBJECT_Y_RANGE / 2.0,
-                    TEA_OBJECT_RESET_CENTER[1] + TEA_OBJECT_Y_RANGE / 2.0,
-                ),
-                "z": (TEA_OBJECT_RESET_CENTER[2], TEA_OBJECT_RESET_CENTER[2]),
-                "roll": (np.pi / 2.0, np.pi / 2.0),
+                "x": (CUP_INIT_POS[0] - 0.05, CUP_INIT_POS[0] + 0.05),
+                "y": (CUP_INIT_POS[1] - 0.05, CUP_INIT_POS[1] + 0.05),
+                "z": (CUP_INIT_POS[2], CUP_INIT_POS[2]),
+                "roll": (np.pi / 2, np.pi / 2),
                 "pitch": (0.0, 0.0),
-                "yaw": (np.pi / 2.0 - 0.5, np.pi / 2.0 + 0.5),
+                "yaw": (-0.5, 0.5),
             },
-            "min_separation": 0.3,
+        },
+    )
+
+    randomize_ice_cube_pose = EventTerm(
+        func=ice_events.randomize_object_pose,
+        mode="reset",
+        params={
+            "asset_cfgs": [SceneEntityCfg("ice_cube")],
+            "pose_range": {
+                "x": (ICE_CUBE_INIT_POS[0] - 0.06, ICE_CUBE_INIT_POS[0] + 0.06),
+                "y": (ICE_CUBE_INIT_POS[1] - 0.06, ICE_CUBE_INIT_POS[1] + 0.06),
+                "z": (ICE_CUBE_INIT_POS[2], ICE_CUBE_INIT_POS[2]),
+                "roll": (-0.4, 0.4),
+                "pitch": (-0.4, 0.4),
+                "yaw": (-0.8, 0.8),
+            },
         },
     )
 
     init_franka_arm_pose = EventTerm(
-        func=tea_events.set_default_joint_pose,
+        func=ice_events.set_default_joint_pose,
         mode="reset",
         params={
             "default_pose": [
@@ -110,7 +119,7 @@ class EventCfg(BaseEventCfg):
     )
 
     randomize_franka_joint_state = EventTerm(
-        func=tea_events.randomize_joint_by_gaussian_offset,
+        func=ice_events.randomize_joint_by_gaussian_offset,
         mode="reset",
         params={
             "mean": 0.0,
@@ -130,8 +139,10 @@ class ObservationsCfg:
 
         actions = ObsTerm(func=mdp.last_action)
         joint_actions = ObsTerm(func=mdp.last_droid_action)
+
         joint_pos = ObsTerm(func=mdp.joint_pos)
         joint_vel = ObsTerm(func=mdp.joint_vel)
+
         eef_pos = ObsTerm(func=mdp.ee_frame_pos)
         eef_quat = ObsTerm(func=mdp.ee_frame_quat)
         gripper_pos = ObsTerm(func=mdp.gripper_pos)
@@ -161,33 +172,27 @@ class ObservationsCfg:
     class SubtaskCfg(ObsGroup):
         """Observations for subtask group."""
 
-        grasp_teapot = ObsTerm(
+        grasp_ice = ObsTerm(
             func=mdp.object_grasped,
             params={
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
-                "object_cfg": SceneEntityCfg("teapot"),
-                "diff_threshold": TEAPOT_GRASP_DIFF_THRESHOLD,
+                "object_cfg": SceneEntityCfg("ice_cube"),
+                "diff_threshold": ICE_GRASP_DIFF_THRESHOLD,
             },
         )
 
-        # teapot_mouth_near_teacup = ObsTerm(
-        #     func=mdp.teapot_mouth_near_teacup_xy,
-        #     params={
-        #         "teapot_cfg": SceneEntityCfg("teapot"),
-        #         "teacup_cfg": SceneEntityCfg("teacup"),
-        #         "mouth_offset": TEAPOT_MOUTH_LOCAL_OFFSET,
-        #         "xy_threshold": TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
-        #     },
-        # )
-
-        # teapot_rolled = ObsTerm(
-        #     func=mdp.teapot_rolled,
-        #     params={
-        #         "teapot_cfg": SceneEntityCfg("teapot"),
-        #         "min_roll_rad": TEAPOT_ROLL_THRESHOLD_RAD,
-        #     },
-        # )
+        ice_in_cup = ObsTerm(
+            func=mdp.ice_in_cup,
+            params={
+                "cup_cfg": SceneEntityCfg("cup"),
+                "ice_cfg": SceneEntityCfg("ice_cube"),
+                "robot_cfg": SceneEntityCfg("robot"),
+                "xy_threshold": ICE_CUP_XY_THRESHOLD,
+                "z_min_threshold": ICE_CUP_Z_MIN_THRESHOLD,
+                "z_max_threshold": ICE_CUP_Z_MAX_THRESHOLD,
+            },
+        )
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -198,8 +203,8 @@ class ObservationsCfg:
 
 
 @configclass
-class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
-    """Configuration for tea task with Droid robot using joint position control."""
+class DroidIceJointPosVisuomotorEnvCfg(IceEnvCfg):
+    """Configuration for ice task with Droid robot using joint position control."""
 
     observations: ObservationsCfg = ObservationsCfg()
 
@@ -207,13 +212,10 @@ class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
     eval_type = None
 
     def __post_init__(self):
-        # post init of parent
         super().__post_init__()
 
-        # Set events
         self.events = EventCfg()
 
-        # Robot Table
         self.scene.robot_table = AssetBaseCfg(
             prim_path="{ENV_REGEX_NS}/RobotTable",
             init_state=AssetBaseCfg.InitialStateCfg(pos=ROBOT_TABLE_INIT_POS, rot=ROBOT_TABLE_INIT_ROT),
@@ -228,7 +230,6 @@ class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
         self.scene.robot.init_state.rot = ROBOT_INIT_ROT
         self.scene.robot.spawn.semantic_tags = [("class", "robot")]
 
-        # Set actions for the specific robot type (franka)
         self.actions.arm_action = mdp.JointPositionActionCfg(
             asset_name="robot",
             joint_names=["panda_joint.*"],
@@ -243,12 +244,10 @@ class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
             close_command_expr={"finger_joint": np.pi / 4},
         )
 
-        # utilities for gripper status check
         self.gripper_joint_names = ["right_outer_knuckle_joint", "finger_joint"]
         self.gripper_open_val = 0.0
         self.gripper_threshold = 0.005
 
-        # Listens to the required transforms
         marker_cfg = FRAME_MARKER_CFG.copy()
         marker_cfg.markers["frame"].scale = (0.1, 0.1, 0.1)
         marker_cfg.prim_path = "/Visuals/FrameTransformer"
@@ -268,33 +267,21 @@ class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/Gripper/Robotiq_2F_85/right_inner_finger",
                     name="tool_rightfinger",
-                    offset=OffsetCfg(
-                        pos=(0.0, 0.0, 0.046),
-                    ),
+                    offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
                 ),
                 FrameTransformerCfg.FrameCfg(
                     prim_path="{ENV_REGEX_NS}/Robot/Gripper/Robotiq_2F_85/left_inner_finger",
                     name="tool_leftfinger",
-                    offset=OffsetCfg(
-                        pos=(0.0, 0.0, 0.046),
-                    ),
+                    offset=OffsetCfg(pos=(0.0, 0.0, 0.046)),
                 ),
             ],
         )
 
-        # Set table camera as the real-world camera
         self.scene.table_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/panda_link0/table_cam",
             height=720,
             width=1280,
             data_types=["rgb"],
-            # spawn=sim_utils.PinholeCameraCfg(
-            #     focal_length=2.1,
-            #     focus_distance=28.0,
-            #     horizontal_aperture=5.376,
-            #     vertical_aperture=3.024,
-            #     clipping_range=(1e-4, 5),
-            # ),
             spawn=sim_utils.PinholeCameraCfg(
                 focal_length=1.0476,
                 horizontal_aperture=2.5452,
@@ -302,14 +289,12 @@ class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
                 clipping_range=(1e-4, 5),
             ),
             offset=CameraCfg.OffsetCfg(
-                pos=(0.004620336834421451, -0.5388594867462788, 0.504018368138419),
-                # rot=(0.2595868830, 0.3175587775, 0.7575422903, 0.5078392969),
+                pos=(0.054620336834421451, -0.4388594867462788, 0.454018368138419),
                 rot=(-0.5078392969, 0.7575422903, -0.3175587775, 0.2595868830),
                 convention="ros",
             ),
         )
 
-        # Set wrist camera
         self.scene.wrist_cam = CameraCfg(
             prim_path="{ENV_REGEX_NS}/Robot/Gripper/Robotiq_2F_85/base_link/wrist_cam",
             height=720,
@@ -328,20 +313,12 @@ class DroidTeaJointPosVisuomotorEnvCfg(TeaEnvCfg):
             ),
         )
 
-        # Set settings for camera rendering
         self.rerender_on_reset = True
-        self.sim.render.antialiasing_mode = "OFF"  # disable dlss
-
-        # # change camera resolutions to save memory
-        # self.scene.table_cam.height = 720 // 2
-        # self.scene.table_cam.width = 1280 // 2
-        # self.scene.wrist_cam.height = 720 // 2
-        # self.scene.wrist_cam.width = 1280 // 2
+        self.sim.render.antialiasing_mode = None
 
         self.scene.table_cam.height = 720
         self.scene.table_cam.width = 1280
         self.scene.wrist_cam.height = 720
         self.scene.wrist_cam.width = 1280
 
-        # List of image observations in policy observations
         self.image_obs_list = ["table_cam", "wrist_cam"]

@@ -67,6 +67,8 @@ _build
 # Tests
 tests/
 
+/isaaclab.sh
+
 # Docker history
 .isaac-lab-docker-history
 
@@ -74,7 +76,6 @@ tests/
 # Assets
 asset/
 assets/
-CLAUDE.md
 
 # Droid
 /droid/
