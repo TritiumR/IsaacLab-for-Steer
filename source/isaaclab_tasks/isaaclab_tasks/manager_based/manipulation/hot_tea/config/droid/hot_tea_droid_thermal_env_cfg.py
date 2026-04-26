@@ -191,11 +191,11 @@ def pseudo_thermal_image(
 
 
 @configclass
-class ThermalObservationsCfg(tea_joint_pos_visuomotor_env_cfg.ObservationsCfg):
+class ThermalObservationsCfg(hot_tea_droid_env_cfg.ObservationsCfg):
     """Observation specs with RGB and pseudo thermal table and wrist camera images."""
 
     @configclass
-    class PolicyCfg(tea_joint_pos_visuomotor_env_cfg.ObservationsCfg.PolicyCfg):
+    class PolicyCfg(hot_tea_droid_env_cfg.ObservationsCfg.PolicyCfg):
         thermal_table_cam = ObsTerm(
             func=pseudo_thermal_image,
             params={

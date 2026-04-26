@@ -184,7 +184,7 @@ class ObservationsCfg:
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
                 "object_cfg": SceneEntityCfg("mug"),
-                "diff_threshold": 0.1,
+                "diff_threshold": 0.15,
             },
         )
 
