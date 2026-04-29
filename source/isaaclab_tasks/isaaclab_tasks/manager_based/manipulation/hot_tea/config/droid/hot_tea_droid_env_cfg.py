@@ -7,6 +7,7 @@ import numpy as np
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
 from isaaclab_tasks.manager_based.manipulation.hot_tea import hot_tea_env_cfg
@@ -20,6 +21,13 @@ from isaaclab_tasks.manager_based.manipulation.tea.config.droid import (
     tea_joint_pos_visuomotor_env_cfg,
 )
 from isaaclab_tasks.manager_based.manipulation.tea.mdp import tea_events
+from isaaclab_tasks.manager_based.manipulation.tea.tea_env_cfg import (
+    TEAPOT_GRASP_DIFF_THRESHOLD,
+    TEAPOT_MAX_RELATIVE_ROLL_RAD,
+    TEAPOT_MOUTH_LOCAL_OFFSET,
+    TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
+    TEAPOT_ROLL_THRESHOLD_RAD,
+)
 
 HOT_TEA_OBJECT_MIN_SEPARATION = 0.18
 _POINTCLOUD_MASK_DATA_TYPE = "instance_id_segmentation_fast"
@@ -109,6 +117,76 @@ class EventCfg(hot_tea_env_cfg.EventCfg):
 
 
 @configclass
+class ObservationsCfg(tea_joint_pos_visuomotor_env_cfg.ObservationsCfg):
+    """Hot tea visuomotor observations targeting the hot teapot."""
+
+    @configclass
+    class SubtaskCfg(tea_joint_pos_visuomotor_env_cfg.ObservationsCfg.SubtaskCfg):
+        grasp_teapot = ObsTerm(
+            func=mdp.object_grasped,
+            params={
+                "robot_cfg": SceneEntityCfg("robot"),
+                "ee_frame_cfg": SceneEntityCfg("ee_frame"),
+                "object_cfg": SceneEntityCfg("hot_teapot"),
+                "diff_threshold": TEAPOT_GRASP_DIFF_THRESHOLD,
+            },
+        )
+
+    subtask_terms: SubtaskCfg = SubtaskCfg()
+
+
+@configclass
+class PointCloudObservationsCfg(tea_joint_pos_pointcloud_env_cfg.ObservationsCfg):
+    """Hot tea point-cloud observations targeting the hot teapot."""
+
+    @configclass
+    class SubtaskCfg(ObservationsCfg.SubtaskCfg):
+        pass
+
+    subtask_terms: SubtaskCfg = SubtaskCfg()
+
+
+@configclass
+class TerminationsCfg:
+    """Hot tea terminations targeting the hot teapot."""
+
+    teapot_dropping = DoneTerm(
+        func=mdp.root_height_below_minimum,
+        params={
+            "minimum_height": 0.5,
+            "asset_cfg": SceneEntityCfg("hot_teapot"),
+        },
+    )
+
+    teacup_dropping = DoneTerm(
+        func=mdp.root_height_below_minimum,
+        params={
+            "minimum_height": 0.5,
+            "asset_cfg": SceneEntityCfg("teacup"),
+        },
+    )
+
+    teapot_over_rolled = DoneTerm(
+        func=mdp.teapot_relative_roll_exceeds_max,
+        params={
+            "teapot_cfg": SceneEntityCfg("hot_teapot"),
+            "max_relative_roll_rad": TEAPOT_MAX_RELATIVE_ROLL_RAD,
+        },
+    )
+
+    success = DoneTerm(
+        func=mdp.task_done_tea,
+        params={
+            "teapot_cfg": SceneEntityCfg("hot_teapot"),
+            "teacup_cfg": SceneEntityCfg("teacup"),
+            "mouth_offset": TEAPOT_MOUTH_LOCAL_OFFSET,
+            "xy_threshold": TEAPOT_MOUTH_TEACUP_XY_THRESHOLD,
+            "min_roll_rad": TEAPOT_ROLL_THRESHOLD_RAD,
+        },
+    )
+
+
+@configclass
 class MaskedPointCloudObservationsCfg(tea_joint_pos_pointcloud_masked_env_cfg.ObservationsCfg):
     """Masked point-cloud observations including the extra teapot."""
 
@@ -135,7 +213,12 @@ class MaskedPointCloudObservationsCfg(tea_joint_pos_pointcloud_masked_env_cfg.Ob
             },
         )
 
+    @configclass
+    class SubtaskCfg(ObservationsCfg.SubtaskCfg):
+        pass
+
     policy: PolicyCfg = PolicyCfg()
+    subtask_terms: SubtaskCfg = SubtaskCfg()
 
 
 def _use_hot_tea_events(env_cfg):
@@ -149,10 +232,12 @@ class DroidHotTeaJointPosVisuomotorEnvCfg(
 ):
     """Hot tea task with Droid robot using joint position control."""
 
+    observations: ObservationsCfg = ObservationsCfg()
     scene: hot_tea_env_cfg.HotTeaSceneCfg = hot_tea_env_cfg.HotTeaSceneCfg(
         num_envs=4096, env_spacing=25, replicate_physics=False
     )
     events: EventCfg = EventCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -165,10 +250,12 @@ class DroidHotTeaIkRelVisuomotorEnvCfg(
 ):
     """Hot tea task with Droid robot using relative IK control."""
 
+    observations: ObservationsCfg = ObservationsCfg()
     scene: hot_tea_env_cfg.HotTeaSceneCfg = hot_tea_env_cfg.HotTeaSceneCfg(
         num_envs=4096, env_spacing=25, replicate_physics=False
     )
     events: EventCfg = EventCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -181,10 +268,12 @@ class DroidHotTeaJointPosPointCloudEnvCfg(
 ):
     """Hot tea task with Droid robot using joint position control and point clouds."""
 
+    observations: PointCloudObservationsCfg = PointCloudObservationsCfg()
     scene: hot_tea_env_cfg.HotTeaSceneCfg = hot_tea_env_cfg.HotTeaSceneCfg(
         num_envs=4096, env_spacing=25, replicate_physics=False
     )
     events: EventCfg = EventCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -197,10 +286,12 @@ class DroidHotTeaIkRelPointCloudEnvCfg(
 ):
     """Hot tea task with Droid robot using relative IK control and point clouds."""
 
+    observations: PointCloudObservationsCfg = PointCloudObservationsCfg()
     scene: hot_tea_env_cfg.HotTeaSceneCfg = hot_tea_env_cfg.HotTeaSceneCfg(
         num_envs=4096, env_spacing=25, replicate_physics=False
     )
     events: EventCfg = EventCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -218,6 +309,7 @@ class DroidHotTeaJointPosPointCloudMaskedEnvCfg(
     )
     events: EventCfg = EventCfg()
     observations: MaskedPointCloudObservationsCfg = MaskedPointCloudObservationsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()
@@ -235,6 +327,7 @@ class DroidHotTeaIkRelPointCloudMaskedEnvCfg(
     )
     events: EventCfg = EventCfg()
     observations: MaskedPointCloudObservationsCfg = MaskedPointCloudObservationsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
         super().__post_init__()

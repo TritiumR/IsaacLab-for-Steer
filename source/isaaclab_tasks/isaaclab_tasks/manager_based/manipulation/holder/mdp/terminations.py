@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING
 
+import isaaclab.utils.math as math_utils
 import torch
 
 from isaaclab.assets import Articulation, RigidObject
@@ -18,6 +19,80 @@ from isaaclab_tasks.manager_based.manipulation.plate.mdp.terminations import roo
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+_DEFAULT_MUG_HANDLE_PROBE_OFFSETS = (
+    # Scaled mug-local target near the center of the handle opening.
+    (0.060, 0.080, 0.043),
+)
+
+_DEFAULT_HOLDER_TOP_STICK_SEGMENTS = (
+    # Scaled holder-local centerline for the single valid highest peg.
+    ((-0.0116, 0.0, 0.3283), (-0.1053, 0.0, 0.3665)),
+)
+
+
+def _local_offsets_to_world(asset: RigidObject, local_offsets: tuple[tuple[float, float, float], ...]) -> torch.Tensor:
+    """Transform local asset offsets into world-frame points."""
+    offsets = torch.tensor(local_offsets, dtype=asset.data.root_pos_w.dtype, device=asset.data.root_pos_w.device)
+    num_envs = asset.data.root_pos_w.shape[0]
+    num_offsets = offsets.shape[0]
+
+    offsets = offsets.unsqueeze(0).expand(num_envs, -1, -1).reshape(num_envs * num_offsets, 3)
+    quats = asset.data.root_quat_w.unsqueeze(1).expand(-1, num_offsets, -1).reshape(num_envs * num_offsets, 4)
+    offsets_w = math_utils.quat_apply(quats, offsets).reshape(num_envs, num_offsets, 3)
+    return asset.data.root_pos_w.unsqueeze(1) + offsets_w
+
+
+def _local_segments_to_world(
+    asset: RigidObject,
+    local_segments: tuple[tuple[tuple[float, float, float], tuple[float, float, float]], ...],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Transform local asset line segments into world-frame start and end points."""
+    segment_starts = tuple(segment[0] for segment in local_segments)
+    segment_ends = tuple(segment[1] for segment in local_segments)
+    segment_starts_w = _local_offsets_to_world(asset, segment_starts)
+    segment_ends_w = _local_offsets_to_world(asset, segment_ends)
+    return segment_starts_w, segment_ends_w
+
+
+def _min_point_to_segment_distance(
+    points_w: torch.Tensor,
+    segment_starts_w: torch.Tensor,
+    segment_ends_w: torch.Tensor,
+) -> torch.Tensor:
+    """Return the minimum distance from any point to any segment for each environment."""
+    points = points_w[:, :, None, :]
+    starts = segment_starts_w[:, None, :, :]
+    segment_vecs = (segment_ends_w - segment_starts_w)[:, None, :, :]
+
+    point_vecs = points - starts
+    segment_len_sq = torch.sum(segment_vecs * segment_vecs, dim=-1).clamp_min(1.0e-8)
+    segment_t = torch.sum(point_vecs * segment_vecs, dim=-1) / segment_len_sq
+    closest_points = starts + torch.clamp(segment_t, 0.0, 1.0).unsqueeze(-1) * segment_vecs
+    distances = torch.linalg.vector_norm(points - closest_points, dim=-1)
+    return distances.flatten(start_dim=1).min(dim=1).values
+
+
+def _mug_handle_to_holder_stick_distance(
+    mug: RigidObject,
+    holder: RigidObject,
+    mug_handle_probe_offsets: tuple[tuple[float, float, float], ...],
+    holder_stick_segments: tuple[tuple[tuple[float, float, float], tuple[float, float, float]], ...],
+) -> torch.Tensor:
+    """Compute the closest distance between the mug handle probe and any holder stick segment."""
+    handle_points_w = _local_offsets_to_world(mug, mug_handle_probe_offsets)
+    stick_starts_w, stick_ends_w = _local_segments_to_world(holder, holder_stick_segments)
+    return _min_point_to_segment_distance(handle_points_w, stick_starts_w, stick_ends_w)
+
+
+def _mug_x_axis_z_in_holder_frame(mug: RigidObject, holder: RigidObject) -> torch.Tensor:
+    """Return the holder-frame Z component of the mug local X axis."""
+    local_x_axis = torch.tensor((1.0, 0.0, 0.0), dtype=mug.data.root_pos_w.dtype, device=mug.data.root_pos_w.device)
+    local_x_axis = local_x_axis.unsqueeze(0).repeat(mug.data.root_pos_w.shape[0], 1)
+    mug_x_axis_w = math_utils.quat_apply(mug.data.root_quat_w, local_x_axis)
+    mug_x_axis_holder = math_utils.quat_apply_inverse(holder.data.root_quat_w, mug_x_axis_w)
+    return mug_x_axis_holder[:, 2]
 
 
 def _gripper_is_open(
@@ -142,8 +217,14 @@ def task_done_holder_released(
     holder_cfg: SceneEntityCfg = SceneEntityCfg("holder"),
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     ee_frame_cfg: SceneEntityCfg = SceneEntityCfg("ee_frame"),
-    min_mug_height: float = 0.36,
+    min_mug_height: float = 0.42,
     holder_xy_threshold: float | None = 0.18,
+    max_handle_stick_distance: float | None = 0.012,
+    mug_handle_probe_offsets: tuple[tuple[float, float, float], ...] = _DEFAULT_MUG_HANDLE_PROBE_OFFSETS,
+    holder_stick_segments: tuple[tuple[tuple[float, float, float], tuple[float, float, float]], ...] = (
+        _DEFAULT_HOLDER_TOP_STICK_SEGMENTS
+    ),
+    min_mug_x_axis_z_in_holder: float | None = 0.5,
     min_gripper_mug_distance: float = 0.12,
     require_gripper_open: bool = True,
     atol: float = 0.01,
@@ -151,13 +232,25 @@ def task_done_holder_released(
 ) -> torch.Tensor:
     """Stateless success check for annotation: mug is hanging and released."""
     mug: RigidObject = env.scene[mug_cfg.name]
+    holder: RigidObject = env.scene[holder_cfg.name]
     success = mug.data.root_pos_w[:, 2] >= min_mug_height
 
     if holder_xy_threshold is not None:
-        holder: RigidObject = env.scene[holder_cfg.name]
         pos_diff = mug.data.root_pos_w - holder.data.root_pos_w
         xy_dist = torch.linalg.vector_norm(pos_diff[:, :2], dim=1)
         success = torch.logical_and(success, xy_dist <= holder_xy_threshold)
+
+    if max_handle_stick_distance is not None:
+        handle_to_stick_dist = _mug_handle_to_holder_stick_distance(
+            mug,
+            holder,
+            mug_handle_probe_offsets,
+            holder_stick_segments,
+        )
+        success = torch.logical_and(success, handle_to_stick_dist <= max_handle_stick_distance)
+
+    if min_mug_x_axis_z_in_holder is not None:
+        success = torch.logical_and(success, _mug_x_axis_z_in_holder_frame(mug, holder) >= min_mug_x_axis_z_in_holder)
 
     if require_gripper_open:
         robot: Articulation = env.scene[robot_cfg.name]

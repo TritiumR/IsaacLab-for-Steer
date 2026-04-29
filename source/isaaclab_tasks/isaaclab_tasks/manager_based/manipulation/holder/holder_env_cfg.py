@@ -215,7 +215,7 @@ class ObservationsCfg:
                 "robot_cfg": SceneEntityCfg("robot"),
                 "ee_frame_cfg": SceneEntityCfg("ee_frame"),
                 "object_cfg": SceneEntityCfg("mug"),
-                "diff_threshold": 0.1,
+                "diff_threshold": 0.15,
             },
         )
 
@@ -249,6 +249,8 @@ class TerminationsCfg:
             "ee_frame_cfg": SceneEntityCfg("ee_frame"),
             "min_mug_height": 0.36,
             "holder_xy_threshold": None,
+            "max_handle_stick_distance": 0.012,
+            "min_mug_x_axis_z_in_holder": 0.5,
             "min_gripper_mug_distance": 0.12,
         },
     )
