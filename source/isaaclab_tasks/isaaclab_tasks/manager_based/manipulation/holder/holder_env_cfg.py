@@ -250,7 +250,6 @@ class TerminationsCfg:
             "min_mug_height": 0.36,
             "holder_xy_threshold": None,
             "max_handle_stick_distance": 0.012,
-            "min_mug_x_axis_z_in_holder": 0.5,
             "min_gripper_mug_distance": 0.12,
         },
     )

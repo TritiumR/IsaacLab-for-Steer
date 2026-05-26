@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Overview
 
 Isaac Lab is a GPU-accelerated robotics simulation framework built on NVIDIA Isaac Sim. It provides a unified interface for reinforcement learning, imitation learning, and motion planning. The framework supports two environment design workflows:

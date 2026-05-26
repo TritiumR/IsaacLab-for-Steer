@@ -86,15 +86,6 @@ def _mug_handle_to_holder_stick_distance(
     return _min_point_to_segment_distance(handle_points_w, stick_starts_w, stick_ends_w)
 
 
-def _mug_x_axis_z_in_holder_frame(mug: RigidObject, holder: RigidObject) -> torch.Tensor:
-    """Return the holder-frame Z component of the mug local X axis."""
-    local_x_axis = torch.tensor((1.0, 0.0, 0.0), dtype=mug.data.root_pos_w.dtype, device=mug.data.root_pos_w.device)
-    local_x_axis = local_x_axis.unsqueeze(0).repeat(mug.data.root_pos_w.shape[0], 1)
-    mug_x_axis_w = math_utils.quat_apply(mug.data.root_quat_w, local_x_axis)
-    mug_x_axis_holder = math_utils.quat_apply_inverse(holder.data.root_quat_w, mug_x_axis_w)
-    return mug_x_axis_holder[:, 2]
-
-
 def _gripper_is_open(
     env: ManagerBasedRLEnv,
     robot: Articulation,
@@ -224,7 +215,6 @@ def task_done_holder_released(
     holder_stick_segments: tuple[tuple[tuple[float, float, float], tuple[float, float, float]], ...] = (
         _DEFAULT_HOLDER_TOP_STICK_SEGMENTS
     ),
-    min_mug_x_axis_z_in_holder: float | None = 0.5,
     min_gripper_mug_distance: float = 0.12,
     require_gripper_open: bool = True,
     atol: float = 0.01,
@@ -248,9 +238,6 @@ def task_done_holder_released(
             holder_stick_segments,
         )
         success = torch.logical_and(success, handle_to_stick_dist <= max_handle_stick_distance)
-
-    if min_mug_x_axis_z_in_holder is not None:
-        success = torch.logical_and(success, _mug_x_axis_z_in_holder_frame(mug, holder) >= min_mug_x_axis_z_in_holder)
 
     if require_gripper_open:
         robot: Articulation = env.scene[robot_cfg.name]
