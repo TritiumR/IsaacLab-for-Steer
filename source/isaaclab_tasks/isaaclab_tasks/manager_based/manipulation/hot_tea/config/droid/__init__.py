@@ -5,7 +5,7 @@
 
 import gymnasium as gym
 
-from . import hot_tea_droid_env_cfg, hot_tea_droid_thermal_env_cfg
+from . import hot_tea_droid_env_cfg, hot_tea_droid_graybody_thermal_env_cfg, hot_tea_droid_thermal_env_cfg
 
 
 gym.register(
@@ -43,6 +43,26 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     kwargs={
         "env_cfg_entry_point": hot_tea_droid_thermal_env_cfg.DroidHotTeaIkRelThermalEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+
+gym.register(
+    id="Isaac-Hot-Tea-Droid-Thermal-Graybody-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": hot_tea_droid_graybody_thermal_env_cfg.DroidHotTeaJointPosGraybodyThermalEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+
+gym.register(
+    id="Isaac-Hot-Tea-Droid-Thermal-Graybody-IK-Rel-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    kwargs={
+        "env_cfg_entry_point": hot_tea_droid_graybody_thermal_env_cfg.DroidHotTeaIkRelGraybodyThermalEnvCfg,
     },
     disable_env_checker=True,
 )

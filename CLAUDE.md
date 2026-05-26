@@ -1,122 +1,36 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Brief reference for Isaac Lab — GPU-accelerated robotics simulation on NVIDIA Isaac Sim. See `AGENTS.md` for full details.
 
-## Overview
+## Workflows
 
-Isaac Lab is a GPU-accelerated robotics simulation framework built on NVIDIA Isaac Sim. It provides a unified interface for reinforcement learning, imitation learning, and motion planning. The framework supports two environment design workflows:
-
-- **Manager-based**: Decomposes environments into configurable managers (observations, actions, rewards, terminations, events, curriculum)
-- **Direct**: Single-class implementation where users implement all functionality directly
+- **Manager-based**: Config-driven via managers (Action, Observation, Reward, Termination, Event, Command, Curriculum).
+- **Direct**: Single-class implementation.
 
 ## Common Commands
 
-All development commands are handled through the `./isaaclab.sh` (Linux) or `isaaclab.bat` (Windows) script.
-
-### Environment Setup
+All commands run through `./isaaclab.sh` (Linux) or `isaaclab.bat` (Windows).
 
 ```bash
-# Create conda environment (default name: env_isaaclab)
-./isaaclab.sh --conda [env_name]
-
-# Create uv environment
-./isaaclab.sh --uv [env_name]
-
-# Install Isaac Lab extensions and RL frameworks
-./isaaclab.sh --install [all|none|rsl_rl|rl_games|sb3|skrl]
+./isaaclab.sh --conda [env_name]            # Create conda env (default: env_isaaclab)
+./isaaclab.sh --install [all|rsl_rl|...]    # Install extensions + RL frameworks
+./isaaclab.sh --python <script.py>          # Run script in Isaac Sim env
+./isaaclab.sh --docs                        # Build docs
+./isaaclab.sh --new                         # Scaffold new task/project
+python3 docker/container.py                 # Docker build/run
 ```
 
-### Running Code
+USD inspection uses `/home/chuanruo/Downloads/blender-4.3.2-linux-x64/4.3/python/bin/python3.11`.
 
-```bash
-# Run Python with Isaac Sim environment
-./isaaclab.sh --python <script.py>
+## Package Layout (`source/`)
 
-# Launch Isaac Sim GUI
-./isaaclab.sh --sim
+- `isaaclab/` — core sim, envs, sensors, assets, managers
+- `isaaclab_assets/` — robot/object configs
+- `isaaclab_tasks/` — task implementations (manager-based + direct)
+- `isaaclab_rl/` — RSL-RL, RL-Games, SB3, SKRL integrations
+- `isaaclab_mimic/` — imitation learning (Apache 2.0)
 
-# Run RL training with RSL-RL
-./isaaclab.sh --python scripts/reinforcement_learning/rsl_rl/train.py --task Isaac-Lift-Cube-v0 --headless
-
-# Run RL inference
-./isaaclab.sh --python scripts/reinforcement_learning/rsl_rl/play.py --task Isaac-Lift-Cube-v0 --num_envs 32 --checkpoint <path>
-
-# List all registered environments
-./isaaclab.sh --python scripts/environments/list_envs.py
-```
-
-### Testing and Linting
-
-```bash
-# Run all tests
-./isaaclab.sh --test
-
-# Run a specific test file
-./isaaclab.sh --python -m pytest tools/template/test/test_generator.py -v
-
-# Run pre-commit formatting and linting
-./isaaclab.sh --format
-
-# Run pre-commit on specific files
-pre-commit run --files <file1.py> <file2.py>
-```
-
-### Documentation
-
-```bash
-# Build documentation
-./isaaclab.sh --docs
-
-# Open built documentation
-xdg-open docs/_build/current/index.html
-```
-
-### Docker
-
-```bash
-# Build and run Docker container
-python3 docker/container.py
-```
-
-### Project Templates
-
-```bash
-# Create new task or project from template
-./isaaclab.sh --new
-```
-
-## Architecture
-
-### Package Structure
-
-The repository is organized as a monorepo with multiple Python packages:
-
-- **`source/isaaclab/`**: Core framework providing simulation interface, environments, sensors, assets, and managers
-- **`source/isaaclab_assets/`**: Robot and object asset configurations
-- **`source/isaaclab_tasks/`**: Task implementations (manager-based and direct workflows)
-- **`source/isaaclab_rl/`**: RL framework integrations (RSL-RL, RL-Games, Stable-Baselines3, SKRL)
-- **`source/isaaclab_mimic/`**: Imitation learning support (Apache 2.0 licensed)
-
-### Manager-Based Workflow
-
-Manager-based environments use a configuration-driven approach with these key managers:
-
-- **ActionManager**: Applies actions to assets (joint positions, joint velocities, inverse kinematics)
-- **ObservationManager**: Computes observations from scene entities
-- **RewardManager**: Computes reward signals
-- **TerminationManager**: Determines episode termination conditions
-- **EventManager**: Handles domain randomization and scene resets
-- **CommandManager**: Generates high-level commands for the robot
-- **CurriculumManager**: Manages curriculum learning
-
-Configuration classes (e.g., `ObservationTermCfg`, `RewardTermCfg`) specify:
-- `func`: The function to call
-- `weight`: Weight for rewards/observations
-- `params`: Parameters passed to the function
-
-### Environment Configuration Pattern
-
-Environment configurations use a hierarchical `@configclass` pattern:
+## Manager-Based Env Pattern
 
 ```python
 @configclass
@@ -129,70 +43,49 @@ class MyEnvCfg(ManagerBasedRLEnvCfg):
     events: EventCfg = EventCfg()
 ```
 
-Tasks are registered via Gymnasium entry points in `source/isaaclab_tasks/config/extension.toml`.
+Term configs (`ObservationTermCfg`, `RewardTermCfg`, etc.) take `func`, `weight`, `params`. Tasks register via Gymnasium entry points in `source/isaaclab_tasks/config/extension.toml`.
 
-### Key Directories for Tasks
+## Key File Patterns
 
-- **`source/isaaclab_tasks/isaaclab_tasks/manager_based/`**: Manager-based task implementations
-  - `manipulation/`, `locomotion/`, `navigation/`, `classic/`
-  - Each task has `mdp/` subdirectory with reward/observation/termination functions
-  - `config/` subdirectory with environment configurations
-- **`source/isaaclab_tasks/isaaclab_tasks/direct/`**: Direct workflow implementations
+- `**/mdp/*.py` — reward/observation/termination functions
+- `**/*_env_cfg.py` — env configs
+- `**/config/*.py`, `**/agents/*.py` — env + RL agent configs
 
-### Asset Configuration
+## Assets & Sensors
 
-Assets are configured using dataclasses in `isaaclab.assets`:
+- Assets: `ArticulationCfg`, `RigidObjectCfg`, `DeformableObjectCfg` with spawn cfgs (`UsdFileCfg`, `MjcfFileCfg`, primitive shapes).
+- Sensors: `CameraCfg`, `RayCasterCfg`, `ContactSensorCfg`, `ImuCfg`, `FrameTransformerCfg`.
 
-- **`ArticulationCfg`**: Robots with joints
-- **`RigidObjectCfg`**: Static or dynamic rigid objects
-- **`DeformableObjectCfg`**: Deformable objects
-- **`AssetBaseCfg`**: Base class for all assets
+## RL Training
 
-Spawn configurations control how assets are loaded:
-- `UsdFileCfg`: Load from USD file
-- `MjcfFileCfg`: Load from MJCF/URDF
-- `SphereCfg`, `CapsuleCfg`, `CuboidCfg`: Procedural primitives
-
-### Sensor System
-
-Sensors are configured and attached to scene entities:
-
-- **`CameraCfg`**: RGB/depth/segmentation cameras (RTX-based)
-- **`RayCasterCfg`**: Ray-casting for height maps or distance sensors
-- **`ContactSensorCfg`**: Contact force/torque sensing
-- **`ImuCfg`**: Inertial measurement units
-- **`FrameTransformerCfg`**: Transform tracking between frames
-
-### RL Training Scripts
-
-Training scripts follow a consistent pattern across RL frameworks:
-
-1. Parse arguments with framework-specific CLI args
-2. Launch Isaac Sim via `AppLauncher`
-3. Import and instantiate environment
-4. Configure and run training
-
-Each framework has `train.py` and `play.py` in `scripts/reinforcement_learning/<framework>/`.
+`scripts/reinforcement_learning/<framework>/{train,play}.py` — parse args, launch `AppLauncher`, instantiate env, train.
 
 ## Code Style
 
-- **Line length**: 120 characters
-- **Formatter**: Black with `--unstable` flag
-- **Import sorting**: isort with custom sections (see `pyproject.toml`)
-- **Linting**: flake8 with specific ignores (E402, E501, W503, E203, D401, R504, R505, SIM102, SIM117, SIM118)
-- **Type checking**: Pyright (basic mode, missing imports ignored in CI)
-- **License headers**: BSD-3 for most files, Apache 2.0 for `isaaclab_mimic`
+- Line length 120; Black `--unstable`; isort; flake8 (ignores E402/E501/W503/E203/D401/R504/R505/SIM102/SIM117/SIM118); Pyright basic.
+- License: BSD-3 (Apache 2.0 for `isaaclab_mimic`).
 
-## Important File Patterns
+## Env Vars
 
-- `**/mdp/*.py`: Markov Decision Process functions (rewards, observations, terminations)
-- `**/config/*.py`: Environment and agent configurations
-- `**/agents/*.py`: RL algorithm configurations
-- `**/*_env_cfg.py`: Environment configuration classes
-- `**/*_cfg.py`: General configuration classes
+- `ISAACLAB_PATH` — repo root
+- `ISAAC_PATH` — Isaac Sim install
+- `CARB_APP_PATH`, `EXP_PATH` — Isaac Sim internals
 
-## Environment Variables
+## Mimic Demo Pipeline
 
-- `ISAACLAB_PATH`: Root of the repository
-- `ISAAC_PATH`: Isaac Sim installation directory (set by `_isaac_sim/setup_conda_env.sh`)
-- `CARB_APP_PATH`, `EXP_PATH`: Isaac Sim internal paths
+```bash
+# Collect
+./isaaclab.sh -p scripts/tools/record_demos.py --task <Env>-IK-Rel-v0 \
+  --teleop_device oculus --dataset_file <path> --num_demos N --enable_cameras
+
+# Annotate
+./isaaclab.sh -p scripts/imitation_learning/isaaclab_mimic/annotate_demos.py \
+  --enable_cameras --task <Env>-Mimic-v0 --auto \
+  --input_file <demos> --output_file <annotated> --headless
+
+# Generate
+./isaaclab.sh -p scripts/imitation_learning/isaaclab_mimic/generate_dataset.py \
+  --enable_cameras --num_envs 1 --generation_num_trials N \
+  --task <Env>-Mimic-v0 --input_file <annotated> --output_file <generated> \
+  --seed SEED --headless
+```

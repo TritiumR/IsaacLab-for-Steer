@@ -131,6 +131,10 @@ from .droid_pen_ik_rel_pointcloud_mimic_env_cfg import (
 from .droid_pen_ik_rel_visuomotor_mimic_env_cfg import (
     DroidPenIKRelVisuomotorMimicEnvCfg,
 )
+from .droid_phone_ik_rel_mimic_env import DroidPhoneIKRelMimicEnv
+from .droid_phone_ik_rel_sound_mimic_env_cfg import (
+    DroidPhoneIKRelSoundMimicEnvCfg,
+)
 from .droid_pot_ik_rel_mimic_env import DroidPotIKRelMimicEnv
 from .droid_pot_ik_rel_pointcloud_mimic_env_cfg import (
     DroidPotIKRelPointCloudMimicEnvCfg,
@@ -641,6 +645,15 @@ gym.register(
     entry_point="isaaclab_mimic.envs:DroidPenIKRelMimicEnv",
     kwargs={
         "env_cfg_entry_point": DroidPenIKRelPointCloudMimicEnvCfg,
+    },
+    disable_env_checker=True,
+)
+
+gym.register(
+    id="Isaac-Phone-Droid-IK-Rel-Sound-Mimic-v0",
+    entry_point="isaaclab_mimic.envs:DroidPhoneIKRelMimicEnv",
+    kwargs={
+        "env_cfg_entry_point": DroidPhoneIKRelSoundMimicEnvCfg,
     },
     disable_env_checker=True,
 )
