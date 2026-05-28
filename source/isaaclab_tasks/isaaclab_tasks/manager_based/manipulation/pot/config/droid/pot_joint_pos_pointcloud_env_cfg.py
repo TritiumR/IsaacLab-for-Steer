@@ -21,6 +21,8 @@ _POT_AND_STOVE_MESH_PATHS = [
     f"{_KITCHEN_ROOT}/model_kitchenware006/E_cover_2",
     f"{_KITCHEN_ROOT}/model_largecabinet/E_body_14/E_parts04_17",
     f"{_KITCHEN_ROOT}/model_largecabinet/E_body_14/E_parts05_18",
+    f"{_KITCHEN_ROOT}/model_largecabinet/E_knob_01_89",
+    f"{_KITCHEN_ROOT}/model_largecabinet/E_knob_02_90",
 ]
 
 
