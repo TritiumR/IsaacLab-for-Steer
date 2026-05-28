@@ -3,11 +3,14 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import CameraCfg
 from isaaclab.utils import configclass
 
 from isaaclab_tasks.manager_based.manipulation.pen import mdp
+from isaaclab_tasks.manager_based.manipulation.pen.mdp import pen_events
 
 from . import pen_joint_pos_visuomotor_env_cfg
 
@@ -30,6 +33,23 @@ def _configure_pointcloud_table_cameras(env_cfg):
             rot=(-rot[0], rot[1], -rot[2], rot[3]),
             convention=table_cam.offset.convention,
         ),
+    )
+
+
+def _configure_pointcloud_pen_assets(env_cfg):
+    """Pointcloud-specific tweaks: double pen-holder x/y scale and rebind pen + holder to the desk's wood material."""
+    holder_spawn = env_cfg.scene.pen_holder001.spawn
+    sx, sy, sz = holder_spawn.scale
+    holder_spawn.scale = (sx * 2.0, sy * 2.0, sz)
+
+    env_cfg.events.retexture_with_table_material = EventTerm(
+        func=pen_events.retexture_with_table_material,
+        mode="prestartup",
+        params={
+            "asset_cfgs": [SceneEntityCfg("pen"), SceneEntityCfg("pen_holder001")],
+            "table_prim_relpath": "interactive_smalllivingroom/model_table_1",
+            "material_subpath": "materials/mat_2086495",
+        },
     )
 
 
@@ -70,3 +90,4 @@ class DroidPenJointPosPointCloudEnvCfg(
     def __post_init__(self):
         super().__post_init__()
         _configure_pointcloud_table_cameras(self)
+        _configure_pointcloud_pen_assets(self)
