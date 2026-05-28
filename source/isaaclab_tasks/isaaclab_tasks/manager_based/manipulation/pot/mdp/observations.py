@@ -28,10 +28,36 @@ if TYPE_CHECKING:
 _POINT_CLOUD_MAX_DEPTH_M = 1.5
 
 
+def _prim_path_matches_root(prim_path: str, prim_root: str) -> bool:
+    """Return whether the USD prim path contains the requested root as a full path segment."""
+    return f"/{prim_root}/" in prim_path or prim_path.endswith(f"/{prim_root}")
+
+
+def _resolve_segmentation_ids_from_prim_paths(
+    camera: Camera,
+    segmentation_data_type: str,
+    include_prim_path_roots: tuple[str, ...],
+) -> list[set[int]]:
+    """Resolve per-env segmentation ids whose prim paths belong to the requested roots."""
+    segmentation_ids_per_env = []
+    for env_info in camera.data.info:
+        id_to_labels = env_info.get(segmentation_data_type, {}).get("idToLabels", {})
+        included_ids: set[int] = set()
+        for segmentation_id, prim_path in id_to_labels.items():
+            if not isinstance(prim_path, str):
+                continue
+            if any(_prim_path_matches_root(prim_path, prim_root) for prim_root in include_prim_path_roots):
+                included_ids.add(int(segmentation_id))
+        segmentation_ids_per_env.append(included_ids)
+    return segmentation_ids_per_env
+
+
 def _sample_rgbd_camera_point_cloud(
     camera: Camera,
     num_points: int,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Sample a fixed-size point cloud from an RGB-D camera in the world frame."""
     depth = camera.data.output["distance_to_image_plane"]
@@ -49,6 +75,26 @@ def _sample_rgbd_camera_point_cloud(
     point_distances = torch.linalg.norm(points_camera, dim=-1)
     valid_mask = torch.isfinite(flat_depth) & (flat_depth > 0.0)
     valid_mask = valid_mask & (point_distances <= _POINT_CLOUD_MAX_DEPTH_M)
+
+    if segmentation_data_type is not None and include_prim_path_roots:
+        segmentation = camera.data.output[segmentation_data_type]
+        if segmentation.dim() == 4 and segmentation.shape[-1] == 1:
+            segmentation = segmentation.squeeze(-1)
+        flat_segmentation = segmentation.transpose(1, 2).reshape(num_envs, -1)
+        segmentation_ids_per_env = _resolve_segmentation_ids_from_prim_paths(
+            camera=camera,
+            segmentation_data_type=segmentation_data_type,
+            include_prim_path_roots=include_prim_path_roots,
+        )
+        segmentation_mask = torch.zeros_like(valid_mask)
+        for env_index, segmentation_ids in enumerate(segmentation_ids_per_env):
+            if not segmentation_ids:
+                continue
+            env_mask = torch.zeros_like(flat_segmentation[env_index], dtype=torch.bool)
+            for segmentation_id in segmentation_ids:
+                env_mask |= flat_segmentation[env_index] == segmentation_id
+            segmentation_mask[env_index] = env_mask
+        valid_mask = valid_mask & segmentation_mask
 
     selected_indices = torch.zeros((num_envs, num_points), device=depth.device, dtype=torch.long)
     has_valid_points = torch.zeros(num_envs, device=depth.device, dtype=torch.bool)
@@ -82,11 +128,13 @@ def _get_merged_rgbd_point_cloud(
     sensor_names: tuple[str, ...],
     num_points: int,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> dict[str, torch.Tensor]:
     """Create and cache a merged point cloud from multiple RGB-D cameras for the current env step."""
     cache_name = "_oven_merged_rgbd_point_cloud_cache"
     cache = getattr(env, cache_name, {})
-    cache_key = (sensor_names, num_points, normalize_color)
+    cache_key = (sensor_names, num_points, normalize_color, segmentation_data_type, include_prim_path_roots)
     step_count = env.common_step_counter
 
     if cache_key in cache and cache[cache_key]["step"] == step_count:
@@ -105,6 +153,8 @@ def _get_merged_rgbd_point_cloud(
             camera=camera,
             num_points=sensor_num_points,
             normalize_color=normalize_color,
+            segmentation_data_type=segmentation_data_type,
+            include_prim_path_roots=include_prim_path_roots,
         )
         positions_b, _ = math_utils.subtract_frame_transforms(
             robot.data.root_pos_w, robot.data.root_quat_w, positions_w, None
@@ -127,9 +177,13 @@ def merged_rgbd_point_cloud_positions(
     sensor_names: tuple[str, ...] = ("table_cam", "table_cam_mirror"),
     num_points: int = 8192,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> torch.Tensor:
     """Merged RGB-D point positions in the robot root frame."""
-    return _get_merged_rgbd_point_cloud(env, sensor_names, num_points, normalize_color)["point_positions"]
+    return _get_merged_rgbd_point_cloud(
+        env, sensor_names, num_points, normalize_color, segmentation_data_type, include_prim_path_roots
+    )["point_positions"]
 
 
 def merged_rgbd_point_cloud_color(
@@ -137,9 +191,13 @@ def merged_rgbd_point_cloud_color(
     sensor_names: tuple[str, ...] = ("table_cam", "table_cam_mirror"),
     num_points: int = 8192,
     normalize_color: bool = False,
+    segmentation_data_type: str | None = None,
+    include_prim_path_roots: tuple[str, ...] = (),
 ) -> torch.Tensor:
     """Merged RGB-D point colors aligned with :func:`merged_rgbd_point_cloud_positions`."""
-    return _get_merged_rgbd_point_cloud(env, sensor_names, num_points, normalize_color)["point_color"]
+    return _get_merged_rgbd_point_cloud(
+        env, sensor_names, num_points, normalize_color, segmentation_data_type, include_prim_path_roots
+    )["point_color"]
 
 
 def object_position_in_world_frame(

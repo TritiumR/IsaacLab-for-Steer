@@ -25,11 +25,15 @@ _POT_AND_STOVE_MESH_PATHS = [
     f"{_KITCHEN_ROOT}/model_largecabinet/E_knob_02_90",
 ]
 
+_POINTCLOUD_MASK_DATA_TYPE = "instance_id_segmentation_fast"
+_POINTCLOUD_MASK_ROOTS = ("E_pot1_1", "E_cover_2", "egg", "Robotiq_2F_85")
+
 
 def _configure_pointcloud_table_cameras(env_cfg):
-    """Augment the original table camera with depth and add a mirrored capture camera."""
+    """Augment the original table camera with depth + instance segmentation, and add a mirrored capture camera."""
     table_cam = env_cfg.scene.table_cam
-    table_cam.data_types = ["rgb", "distance_to_image_plane"]
+    table_cam.data_types = ["rgb", "distance_to_image_plane", _POINTCLOUD_MASK_DATA_TYPE]
+    table_cam.colorize_instance_id_segmentation = False
 
     pos = table_cam.offset.pos
     rot = table_cam.offset.rot
@@ -37,7 +41,8 @@ def _configure_pointcloud_table_cameras(env_cfg):
         prim_path=str(table_cam.prim_path).replace("table_cam", "table_cam_mirror"),
         height=table_cam.height,
         width=table_cam.width,
-        data_types=["rgb", "distance_to_image_plane"],
+        data_types=["rgb", "distance_to_image_plane", _POINTCLOUD_MASK_DATA_TYPE],
+        colorize_instance_id_segmentation=False,
         spawn=table_cam.spawn,
         offset=CameraCfg.OffsetCfg(
             pos=(pos[0], -pos[1], pos[2]),
@@ -69,16 +74,20 @@ class ObservationsCfg(pot_joint_pos_visuomotor_env_cfg.ObservationsCfg):
             func=mdp.merged_rgbd_point_cloud_positions,
             params={
                 "sensor_names": ("table_cam", "table_cam_mirror"),
-                "num_points": 8192,
+                "num_points": 1024,
                 "normalize_color": False,
+                "segmentation_data_type": _POINTCLOUD_MASK_DATA_TYPE,
+                "include_prim_path_roots": _POINTCLOUD_MASK_ROOTS,
             },
         )
         point_color = ObsTerm(
             func=mdp.merged_rgbd_point_cloud_color,
             params={
                 "sensor_names": ("table_cam", "table_cam_mirror"),
-                "num_points": 8192,
+                "num_points": 1024,
                 "normalize_color": False,
+                "segmentation_data_type": _POINTCLOUD_MASK_DATA_TYPE,
+                "include_prim_path_roots": _POINTCLOUD_MASK_ROOTS,
             },
         )
 

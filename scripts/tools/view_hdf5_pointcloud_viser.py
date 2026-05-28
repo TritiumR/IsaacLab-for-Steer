@@ -10,6 +10,7 @@ The expected dataset layout matches the point-cloud IsaacLab converter:
 
 * ``data/demo_*/obs/point_positions``: ``(T, N, 3)`` float XYZ points.
 * ``data/demo_*/obs/point_color``: ``(T, N, 3)`` RGB colors.
+* (optional) ``data/demo_*/obs/<image_key>``: ``(T, H, W, 3)`` uint8 RGB frames.
 
 Example:
     python scripts/tools/view_hdf5_pointcloud_viser.py \
@@ -133,6 +134,36 @@ def _process_point_cloud(
     return points, colors
 
 
+def _detect_image_keys(file: h5py.File, demo_names: list[str], candidate_keys: list[str]) -> list[str]:
+    """Return only the candidate keys that exist as (T, H, W, 3) uint8 datasets in every demo."""
+    available: list[str] = []
+    for key in candidate_keys:
+        ok = True
+        for demo_name in demo_names:
+            obs = file["data"][demo_name].get("obs")
+            if obs is None or key not in obs:
+                ok = False
+                break
+            ds = obs[key]
+            if ds.ndim != 4 or ds.shape[-1] != 3:
+                ok = False
+                break
+        if ok:
+            available.append(key)
+    return available
+
+
+def _load_image(file: h5py.File, demo_name: str, key: str, frame_index: int, max_width: int | None) -> np.ndarray:
+    """Read a single RGB frame from the HDF5 dataset, optionally downsampled to ``max_width``."""
+    img = np.asarray(file["data"][demo_name]["obs"][key][frame_index])
+    if img.dtype != np.uint8:
+        img = np.clip(img, 0, 255).astype(np.uint8)
+    if max_width is not None and img.shape[1] > max_width:
+        stride = int(np.ceil(img.shape[1] / max_width))
+        img = img[::stride, ::stride]
+    return img
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="View IsaacLab HDF5 point clouds in Viser.")
     parser.add_argument(
@@ -158,6 +189,19 @@ def main() -> None:
         default=None,
         help="Uniformly subsample to at most this many visible points per frame.",
     )
+    parser.add_argument(
+        "--image-keys",
+        type=str,
+        nargs="*",
+        default=["table_cam", "wrist_cam"],
+        help="HDF5 obs keys to display as RGB images alongside the point cloud. Pass nothing to disable.",
+    )
+    parser.add_argument(
+        "--image-max-width",
+        type=int,
+        default=320,
+        help="Downsample image previews so width does not exceed this many pixels (set 0 to disable).",
+    )
     args = parser.parse_args()
 
     dataset_path = Path(args.input).expanduser().resolve()
@@ -172,9 +216,14 @@ def main() -> None:
     demo_names = [demo.name for demo in demo_infos]
     initial_demo_name = args.demo if args.demo in demo_by_name else demo_names[0]
 
+    image_keys = _detect_image_keys(h5_file, demo_names, list(args.image_keys or []))
+    if args.image_keys and not image_keys:
+        print(f"[WARN] Requested image keys {args.image_keys} not found in dataset; skipping image preview.")
+    image_max_width = args.image_max_width if args.image_max_width and args.image_max_width > 0 else None
+
     data_lock = threading.Lock()
 
-    def load_frame(demo_name: str, frame_index: int) -> tuple[np.ndarray, np.ndarray, int]:
+    def load_frame(demo_name: str, frame_index: int) -> tuple[np.ndarray, np.ndarray, int, dict[str, np.ndarray]]:
         with data_lock:
             demo = demo_by_name[demo_name]
             clamped_frame = min(max(int(frame_index), 0), demo.num_frames - 1)
@@ -185,9 +234,12 @@ def main() -> None:
                 drop_zero_points=args.drop_zero_points,
                 max_points=args.max_points,
             )
-            return points, colors, clamped_frame
+            images = {
+                key: _load_image(h5_file, demo_name, key, clamped_frame, image_max_width) for key in image_keys
+            }
+            return points, colors, clamped_frame, images
 
-    initial_points, initial_colors, initial_frame = load_frame(initial_demo_name, args.frame)
+    initial_points, initial_colors, initial_frame, initial_images = load_frame(initial_demo_name, args.frame)
 
     server = viser.ViserServer(host=args.host, port=args.port)
     server.scene.world_axes.visible = True
@@ -233,6 +285,12 @@ def main() -> None:
         prev_button = server.gui.add_button("Previous", icon="player-skip-back")
         next_button = server.gui.add_button("Next", icon="player-skip-forward")
 
+    image_handles: dict[str, object] = {}
+    if image_keys:
+        with server.gui.add_folder("Cameras", expand_by_default=True):
+            for key in image_keys:
+                image_handles[key] = server.gui.add_image(initial_images[key], label=key)
+
     def update_frame() -> None:
         demo_name = str(demo_dropdown.value)
         demo = demo_by_name[demo_name]
@@ -241,9 +299,11 @@ def main() -> None:
             frame_slider.value = demo.num_frames - 1
             return
 
-        points, colors, clamped_frame = load_frame(demo_name, requested_frame)
+        points, colors, clamped_frame, images = load_frame(demo_name, requested_frame)
         point_cloud_handle.points = points
         point_cloud_handle.colors = colors
+        for key, handle in image_handles.items():
+            handle.image = images[key]
         status_markdown.content = _format_status(demo, clamped_frame, int(points.shape[0]))
 
     @demo_dropdown.on_update
