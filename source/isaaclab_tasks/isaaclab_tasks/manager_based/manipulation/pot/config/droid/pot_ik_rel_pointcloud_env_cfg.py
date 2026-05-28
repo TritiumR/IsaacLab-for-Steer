@@ -21,3 +21,4 @@ class DroidPotIkRelPointCloudEnvCfg(
     def __post_init__(self):
         super().__post_init__()
         pot_joint_pos_pointcloud_env_cfg._configure_pointcloud_table_cameras(self)
+        pot_joint_pos_pointcloud_env_cfg._configure_pointcloud_pot_stove_materials(self)

@@ -14,7 +14,7 @@ import torch
 from typing import TYPE_CHECKING
 
 from isaacsim.core.utils.stage import get_current_stage
-from pxr import Gf, UsdGeom, UsdPhysics
+from pxr import Gf, UsdGeom, UsdPhysics, UsdShade
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -518,6 +518,48 @@ def bind_rigid_body_material(
         material_path = f"{prim_path}/{material_name}"
         material_cfg.func(material_path, material_cfg)
         sim_utils.bind_physics_material(prim_path, material_path, stage=stage)
+
+
+def retexture_with_table_material(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    asset_cfgs: list[SceneEntityCfg],
+    table_prim_relpath: str = "interactive_smalllivingroom/model_table_1",
+    material_subpath: str = "materials/mat_2086495",
+):
+    """Rebind all mesh visuals under the given assets to a material from a sibling scene prim.
+
+    Resolves the material at ``{env_ns}/{table_prim_relpath}/{material_subpath}`` for each
+    matching asset prim and rebinds every UsdGeom.Mesh underneath to it. Used so the pen
+    and pen-holder share the desk's wood texture in pointcloud observations.
+    """
+    del env_ids
+
+    stage = get_current_stage()
+
+    for asset_cfg in asset_cfgs:
+        asset: AssetBase = env.scene[asset_cfg.name]
+        for prim_path in sim_utils.find_matching_prim_paths(asset.cfg.prim_path, stage):
+            env_ns = prim_path.rsplit("/", 1)[0]
+            material_path = f"{env_ns}/{table_prim_relpath}/{material_subpath}"
+            material_prim = stage.GetPrimAtPath(material_path)
+            if not material_prim.IsValid():
+                continue
+            material = UsdShade.Material(material_prim)
+
+            root_prim = stage.GetPrimAtPath(prim_path)
+            if not root_prim.IsValid():
+                continue
+
+            prim_stack = [root_prim]
+            while prim_stack:
+                prim = prim_stack.pop()
+                if prim.IsInstance():
+                    continue
+                if prim.IsA(UsdGeom.Mesh):
+                    binding_api = UsdShade.MaterialBindingAPI.Apply(prim)
+                    binding_api.Bind(material)
+                prim_stack.extend(prim.GetChildren())
 
 
 def set_asset_mesh_collision_to_convex_decomposition(

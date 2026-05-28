@@ -21,3 +21,4 @@ class DroidPenIkRelPointCloudEnvCfg(
     def __post_init__(self):
         super().__post_init__()
         pen_joint_pos_pointcloud_env_cfg._configure_pointcloud_table_cameras(self)
+        pen_joint_pos_pointcloud_env_cfg._configure_pointcloud_pen_assets(self)

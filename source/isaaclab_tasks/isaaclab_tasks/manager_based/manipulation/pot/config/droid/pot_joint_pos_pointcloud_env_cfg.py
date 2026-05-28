@@ -3,13 +3,25 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.sensors import CameraCfg
 from isaaclab.utils import configclass
 
 from isaaclab_tasks.manager_based.manipulation.pot import mdp
+from isaaclab_tasks.manager_based.manipulation.pot.mdp import pot_events
 
 from . import pot_joint_pos_visuomotor_env_cfg
+
+
+_KITCHEN_ROOT = "{ENV_REGEX_NS}/interactive_kitchen_with_parlor"
+_TABLE_MATERIAL_PATH = f"{_KITCHEN_ROOT}/model_largecabinet/materials/mat_1DB3671726E88062"
+_POT_AND_STOVE_MESH_PATHS = [
+    f"{_KITCHEN_ROOT}/model_kitchenware006/E_pot1_1",
+    f"{_KITCHEN_ROOT}/model_kitchenware006/E_cover_2",
+    f"{_KITCHEN_ROOT}/model_largecabinet/E_body_14/E_parts04_17",
+    f"{_KITCHEN_ROOT}/model_largecabinet/E_body_14/E_parts05_18",
+]
 
 
 def _configure_pointcloud_table_cameras(env_cfg):
@@ -30,6 +42,18 @@ def _configure_pointcloud_table_cameras(env_cfg):
             rot=(-rot[0], rot[1], -rot[2], rot[3]),
             convention=table_cam.offset.convention,
         ),
+    )
+
+
+def _configure_pointcloud_pot_stove_materials(env_cfg):
+    """Rebind pot and stove visuals to share the kitchen counter (table) material."""
+    env_cfg.events.retexture_pot_and_stove = EventTerm(
+        func=pot_events.rebind_mesh_material,
+        mode="prestartup",
+        params={
+            "target_mesh_prim_paths": list(_POT_AND_STOVE_MESH_PATHS),
+            "source_material_prim_path": _TABLE_MATERIAL_PATH,
+        },
     )
 
 
@@ -70,3 +94,4 @@ class DroidPotJointPosPointCloudEnvCfg(
     def __post_init__(self):
         super().__post_init__()
         _configure_pointcloud_table_cameras(self)
+        _configure_pointcloud_pot_stove_materials(self)

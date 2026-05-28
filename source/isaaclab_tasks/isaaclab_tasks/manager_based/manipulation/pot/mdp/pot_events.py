@@ -14,7 +14,7 @@ import torch
 from typing import TYPE_CHECKING
 
 from isaacsim.core.utils.stage import get_current_stage
-from pxr import Gf, UsdGeom, UsdPhysics
+from pxr import Gf, UsdGeom, UsdPhysics, UsdShade
 
 import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
@@ -590,6 +590,68 @@ def bind_rigid_body_material(
         material_path = f"{prim_path}/{material_name}"
         material_cfg.func(material_path, material_cfg)
         sim_utils.bind_physics_material(prim_path, material_path, stage=stage)
+
+
+def rebind_mesh_material(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor | None,
+    target_mesh_prim_paths: list[str],
+    source_material_prim_path: str,
+):
+    """Bind the material at ``source_material_prim_path`` to all Mesh prims under each
+    ``target_mesh_prim_paths`` entry.
+
+    All paths may contain the ``{ENV_REGEX_NS}`` placeholder, which is replaced with the
+    scene's env regex namespace before stage lookup. For each concrete source-material
+    match, the env-namespace prefix is derived from the match and used to construct the
+    corresponding per-env target paths.
+    """
+    del env_ids
+
+    stage = get_current_stage()
+    env_regex_ns = env.scene.env_regex_ns
+
+    def _resolve(path: str) -> str:
+        return path.replace("{ENV_REGEX_NS}", env_regex_ns)
+
+    source_paths = sim_utils.find_matching_prim_paths(_resolve(source_material_prim_path), stage)
+    if not source_paths:
+        return
+
+    src_suffix = (
+        source_material_prim_path.split("{ENV_REGEX_NS}", 1)[1]
+        if "{ENV_REGEX_NS}" in source_material_prim_path
+        else None
+    )
+    parsed_targets = [
+        (True, p.split("{ENV_REGEX_NS}", 1)[1]) if "{ENV_REGEX_NS}" in p else (False, p)
+        for p in target_mesh_prim_paths
+    ]
+
+    for src_path in source_paths:
+        material_prim = stage.GetPrimAtPath(src_path)
+        if not material_prim.IsValid():
+            continue
+        material = UsdShade.Material(material_prim)
+
+        env_prefix = ""
+        if src_suffix is not None and src_path.endswith(src_suffix):
+            env_prefix = src_path[: -len(src_suffix)]
+
+        for has_ns, suffix in parsed_targets:
+            tgt_path = env_prefix + suffix if has_ns else suffix
+            root_prim = stage.GetPrimAtPath(tgt_path)
+            if not root_prim.IsValid():
+                continue
+            prim_stack = [root_prim]
+            while prim_stack:
+                prim = prim_stack.pop()
+                if prim.IsInstance():
+                    continue
+                if prim.IsA(UsdGeom.Mesh):
+                    binding_api = UsdShade.MaterialBindingAPI.Apply(prim)
+                    binding_api.Bind(material)
+                prim_stack.extend(prim.GetChildren())
 
 
 def set_asset_mesh_collision_to_convex_decomposition(
